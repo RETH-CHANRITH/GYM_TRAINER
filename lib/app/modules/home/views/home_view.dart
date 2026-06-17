@@ -1,26 +1,39 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:get/get.dart';
-
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:animated_bottom_navigation_bar/animated_bottom_navigation_bar.dart';
+import 'package:google_fonts/google_fonts.dart';
+
 import 'package:gym_trainer/app/modules/favorite/views/favorite_view.dart';
 import 'package:gym_trainer/app/modules/profile/views/profile_screen.dart';
 import 'package:gym_trainer/app/modules/messaging/views/messaging_screen.dart';
 import '../../../services/favourites_service.dart';
+import '../../../services/bookings_service.dart';
 import '../controllers/home_controller.dart';
 import '../../../../config/glass_ui.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'post_comments_sheet.dart';
 
-class HomeView extends GetView<HomeController> {
-  const HomeView({super.key});
+class HomeView extends ConsumerStatefulWidget {
+  final String? autoOpenPostId;
+  final String? autoOpenTrainerName;
 
-  // ─── Design Tokens ────────────────────────────────────────────────────────
+  const HomeView({
+    super.key,
+    this.autoOpenPostId,
+    this.autoOpenTrainerName,
+  });
+
   static const Color ink = Color(0xFF0A0A0F);
   static const Color surface = Color(0xFF111118);
   static const Color card = Color(0xFF17171F);
   static const Color raised = Color(0xFF1E1E28);
   static const Color stroke = Color(0xFF2A2A36);
-  static const Color neon = Color(0xFFCBFF47); // electric lime
+  static const Color neon = Color(0xFFCBFF47);
   static const Color coral = Color(0xFFFF5C5C);
   static const Color sky = Color(0xFF5CE8FF);
   static const Color lilac = Color(0xFFA78BFA);
@@ -28,7 +41,46 @@ class HomeView extends GetView<HomeController> {
   static const Color transparent = Color(0x00000000);
 
   @override
+  ConsumerState<HomeView> createState() => _HomeViewState();
+}
+
+class _HomeViewState extends ConsumerState<HomeView> {
+  @override
+  void initState() {
+    super.initState();
+    if (widget.autoOpenPostId != null && widget.autoOpenPostId!.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        showModalBottomSheet(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+          builder: (context) => PostCommentsSheet(
+            postId: widget.autoOpenPostId!,
+            trainerName: widget.autoOpenTrainerName ?? 'Trainer',
+          ),
+        );
+      });
+    }
+  }
+
+  // Color aliases — shadow ambiguous imports from sub-views
+  Color get ink => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF0A0A0F) : const Color(0xFFF9F9FC);
+  Color get surface => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF111118) : const Color(0xFFFFFFFF);
+  Color get card => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF17171F) : const Color(0xFFFFFFFF);
+  Color get raised => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF1E1E28) : const Color(0xFFF0EFF5);
+  Color get stroke => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF2A2A36) : const Color(0xFFE5E7EB);
+  Color get neon => Theme.of(context).colorScheme.primary;
+  Color get muted => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF6B6B7E) : Colors.black45;
+  Color get text => Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black87;
+  static const Color coral = HomeView.coral;
+  static const Color sky = HomeView.sky;
+  static const Color lilac = HomeView.lilac;
+
+  @override
   Widget build(BuildContext context) {
+    final homeState = ref.watch(homeNotifierProvider);
+    final controller = ref.read(homeNotifierProvider.notifier);
+
     final iconList = [
       CupertinoIcons.bolt,
       CupertinoIcons.heart_fill,
@@ -38,115 +90,110 @@ class HomeView extends GetView<HomeController> {
     final labelList = ['Home', 'Favorite', 'Messages', 'Profile'];
 
     final pages = [
-      _buildHomeTab(),
+      _buildHomeTab(context, ref, homeState, controller),
       const FavouriteView(),
       const MessagingScreen(),
       const ProfileScreen(),
     ];
 
-    return Obx(
-      () => Scaffold(
-        backgroundColor: Colors.transparent,
-        extendBody: true,
-        body: Stack(
-          children: [
-            Positioned.fill(child: trainerBackground()),
-            IndexedStack(index: controller.currentIndex.value, children: pages),
-          ],
-        ),
-        bottomNavigationBar: AnimatedBottomNavigationBar.builder(
-          backgroundColor: surface,
-          itemCount: iconList.length,
-          tabBuilder: (int index, bool isActive) {
-            return AnimatedContainer(
-              duration: const Duration(milliseconds: 250),
-              curve: Curves.easeOutCubic,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    width: 42,
-                    height: 42,
-                    decoration: BoxDecoration(
-                      color: isActive ? neon : Colors.transparent,
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Icon(
-                      iconList[index],
-                      size: 22,
-                      color: isActive ? ink : muted,
-                    ),
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      extendBody: true,
+      body: Stack(
+        children: [
+          Positioned.fill(child: trainerBackground(context)),
+          IndexedStack(index: homeState.currentIndex, children: pages),
+        ],
+      ),
+      bottomNavigationBar: AnimatedBottomNavigationBar.builder(
+        backgroundColor: surface,
+        itemCount: iconList.length,
+        tabBuilder: (int index, bool isActive) {
+          return AnimatedContainer(
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeOutCubic,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: isActive ? neon : Colors.transparent,
+                    borderRadius: BorderRadius.circular(14),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    labelList[index],
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
-                      color: isActive ? neon : muted,
-                    ),
+                  child: Icon(
+                    iconList[index],
+                    size: 22,
+                    color: isActive ? ink : muted,
                   ),
-                ],
-              ),
-            );
-          },
-          activeIndex: controller.currentIndex.value,
-          gapLocation: GapLocation.none,
-          notchSmoothness: NotchSmoothness.softEdge,
-          leftCornerRadius: 28,
-          rightCornerRadius: 28,
-          height: 82,
-          splashColor: neon.withValues(alpha: 0.12),
-          onTap: controller.changeTab,
-        ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  labelList[index],
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+                    color: isActive ? neon : muted,
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+        activeIndex: homeState.currentIndex,
+        gapLocation: GapLocation.none,
+        notchSmoothness: NotchSmoothness.softEdge,
+        leftCornerRadius: 28,
+        rightCornerRadius: 28,
+        height: 82,
+        splashColor: neon.withValues(alpha: 0.12),
+        onTap: controller.changeTab,
       ),
     );
   }
 
-  Widget _buildHomeTab() {
+  Widget _buildHomeTab(
+    BuildContext context,
+    WidgetRef ref,
+    HomeState homeState,
+    HomeNotifier controller,
+  ) {
+    const cats = ['All', 'Strength', 'Yoga', 'Cardio', 'Boxing', 'Swim'];
     return CustomScrollView(
       physics: const BouncingScrollPhysics(),
       slivers: [
-        _buildSliverHeader(),
+        _buildSliverHeader(context, homeState, controller),
         SliverPadding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           sliver: SliverList(
             delegate: SliverChildListDelegate([
               const SizedBox(height: 28),
-              _buildGreeting(),
+              _buildGreeting(homeState),
               const SizedBox(height: 24),
-              _buildSearchBar(),
+              _buildSearchBar(context, controller),
               const SizedBox(height: 32),
-              _buildQuickActions(),
+              _buildQuickActions(context, ref),
               const SizedBox(height: 32),
-              _buildCategoryTabs(),
+              _buildCategoryTabs(homeState, controller),
               const SizedBox(height: 32),
-              _buildUpcomingSessionsSection(),
+              _buildUpcomingSessionsSection(context, ref),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Obx(() {
-                    const cats = [
-                      'Strength',
-                      'Yoga',
-                      'Cardio',
-                      'Boxing',
-                      'Swim',
-                    ];
-                    return _buildLabel(
-                      '${cats[controller.selectedCategoryIndex.value]} Trainers',
-                      onSeeAll: controller.navigateToSearch,
-                    );
-                  }),
+                  _buildLabel(
+                    '${cats[homeState.selectedCategoryIndex]} Trainers',
+                    onSeeAll: () => controller.navigateToSearch(context),
+                  ),
                   const SizedBox(height: 16),
-                  _buildTrainersList(),
+                  _buildTrainersList(context, ref, controller),
                   const SizedBox(height: 24),
-                  _buildTrainerFeedSection(),
+                  _buildTrainerFeedSection(context, ref, homeState, controller),
                   const SizedBox(height: 24),
-                  _buildStatsRow(),
+                  _buildStatsRow(context, homeState, controller),
                   const SizedBox(height: 24),
-                  _buildSpecialOfferCard(),
+                  _buildSpecialOfferCard(context, homeState, controller),
                   const SizedBox(height: 100),
                 ],
               ),
@@ -157,8 +204,11 @@ class HomeView extends GetView<HomeController> {
     );
   }
 
-  // ─── Sliver App Bar ───────────────────────────────────────────────────────
-  Widget _buildSliverHeader() {
+  Widget _buildSliverHeader(
+    BuildContext context,
+    HomeState homeState,
+    HomeNotifier controller,
+  ) {
     return SliverAppBar(
       backgroundColor: ink,
       expandedHeight: 0,
@@ -172,18 +222,17 @@ class HomeView extends GetView<HomeController> {
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
             child: Row(
               children: [
-                // Avatar
-                _buildAvatar(),
+                _buildAvatar(homeState),
                 const Spacer(),
                 _buildIconBtn(
                   CupertinoIcons.bell,
-                  controller.unreadNotificationsCount,
-                  controller.navigateToNotifications,
+                  homeState.unreadNotificationsCount,
+                  () => controller.navigateToNotifications(context),
                 ),
                 const SizedBox(width: 10),
                 _buildIconBtn(
                   CupertinoIcons.chat_bubble,
-                  controller.unreadMessagesCount,
+                  homeState.unreadMessagesCount,
                   controller.navigateToMessages,
                 ),
               ],
@@ -194,33 +243,30 @@ class HomeView extends GetView<HomeController> {
     );
   }
 
-  Widget _buildAvatar() {
-    return Obx(() {
-      final photoUrl = controller.userPhotoUrl.value;
-      final initial = controller.userInitial.value;
-      return Container(
-        width: 52,
-        height: 52,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: neon, width: 2),
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(14),
-          child:
-              photoUrl.isNotEmpty
-                  ? CachedNetworkImage(
-                    imageUrl: photoUrl,
-                    fit: BoxFit.cover,
-                    memCacheWidth: 156,
-                    memCacheHeight: 156,
-                    fadeInDuration: const Duration(milliseconds: 120),
-                    errorWidget: (_, __, ___) => _buildAvatarFallback(initial),
-                  )
-                  : _buildAvatarFallback(initial),
-        ),
-      );
-    });
+  Widget _buildAvatar(HomeState homeState) {
+    final photoUrl = homeState.userPhotoUrl;
+    final initial = homeState.userInitial;
+    return Container(
+      width: 52,
+      height: 52,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: neon, width: 2),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: photoUrl.isNotEmpty
+            ? CachedNetworkImage(
+                imageUrl: photoUrl,
+                fit: BoxFit.cover,
+                memCacheWidth: 156,
+                memCacheHeight: 156,
+                fadeInDuration: const Duration(milliseconds: 120),
+                errorWidget: (_, __, ___) => _buildAvatarFallback(initial),
+              )
+            : _buildAvatarFallback(initial),
+      ),
+    );
   }
 
   Widget _buildAvatarFallback(String initial) {
@@ -229,7 +275,7 @@ class HomeView extends GetView<HomeController> {
       child: Center(
         child: Text(
           initial,
-          style: const TextStyle(
+          style: TextStyle(
             color: neon,
             fontSize: 18,
             fontWeight: FontWeight.w800,
@@ -239,87 +285,89 @@ class HomeView extends GetView<HomeController> {
     );
   }
 
-  Widget _buildIconBtn(IconData icon, RxInt badge, VoidCallback onTap) {
-    return Obx(() {
-      final count = badge.value;
-      return GestureDetector(
-        onTap: onTap,
-        child: Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: raised,
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              Icon(icon, color: Colors.white70, size: 22),
-              if (count > 0)
-                Positioned(
-                  top: 8,
-                  right: 8,
-                  child: Container(
-                    width: 14,
-                    height: 14,
-                    decoration: const BoxDecoration(
-                      color: coral,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Center(
-                      child: Text(
-                        count > 9 ? '9+' : '$count',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 8,
-                          fontWeight: FontWeight.bold,
-                        ),
+  Widget _buildIconBtn(IconData icon, int count, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          color: raised,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Icon(icon, color: text.withValues(alpha: 0.7), size: 22),
+            if (count > 0)
+              Positioned(
+                top: 8,
+                right: 8,
+                child: Container(
+                  width: 14,
+                  height: 14,
+                  decoration: const BoxDecoration(
+                    color: coral,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Center(
+                    child: Text(
+                      count > 9 ? '9+' : '$count',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 8,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
                   ),
                 ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGreeting(HomeState homeState) {
+    final name = homeState.userName;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        RichText(
+          text: TextSpan(
+            children: [
+              TextSpan(
+                text: 'Hey, $name ',
+                style: TextStyle(
+                  color: text.withValues(alpha: 0.9),
+                  fontSize: 28,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.5,
+                ),
+              ),
+              WidgetSpan(
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 4),
+                  child: Icon(
+                    Icons.waving_hand,
+                    size: 26,
+                    color: Colors.amber,
+                  ),
+                ),
+              ),
             ],
           ),
         ),
-      );
-    });
+        const SizedBox(height: 6),
+        Text(
+          'Ready to crush it today?',
+          style: TextStyle(color: muted, fontSize: 15, letterSpacing: 0.2),
+        ),
+      ],
+    );
   }
 
-  // ─── Greeting ─────────────────────────────────────────────────────────────
-  Widget _buildGreeting() {
-    return Obx(() {
-      final name = controller.userName.value;
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          RichText(
-            text: TextSpan(
-              children: [
-                TextSpan(
-                  text: 'Hey, $name ',
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.9),
-                    fontSize: 28,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.5,
-                  ),
-                ),
-                const TextSpan(text: '👋', style: TextStyle(fontSize: 26)),
-              ],
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Ready to crush it today?',
-            style: TextStyle(color: muted, fontSize: 15, letterSpacing: 0.2),
-          ),
-        ],
-      );
-    });
-  }
-
-  // ─── Search Bar ───────────────────────────────────────────────────────────
-  Widget _buildSearchBar() {
+  Widget _buildSearchBar(BuildContext context, HomeNotifier controller) {
     return Container(
       height: 56,
       decoration: BoxDecoration(
@@ -341,7 +389,7 @@ class HomeView extends GetView<HomeController> {
           const SizedBox(width: 12),
           Expanded(
             child: TextField(
-              style: const TextStyle(color: Colors.white, fontSize: 15),
+              style: TextStyle(color: text, fontSize: 15),
               cursorColor: neon,
               decoration: InputDecoration(
                 hintText: 'Search trainers, workouts...',
@@ -351,13 +399,12 @@ class HomeView extends GetView<HomeController> {
                 isDense: true,
               ),
               onChanged: controller.updateSearchQuery,
-              onSubmitted: (_) => controller.navigateToSearch(),
+              onSubmitted: (_) => controller.navigateToSearch(context),
             ),
           ),
           const SizedBox(width: 8),
-          // Filter button
           GestureDetector(
-            onTap: controller.navigateToSearch,
+            onTap: () => controller.navigateToSearch(context),
             child: Container(
               width: 44,
               height: 44,
@@ -373,7 +420,7 @@ class HomeView extends GetView<HomeController> {
                   ),
                 ],
               ),
-              child: const Icon(
+              child: Icon(
                 CupertinoIcons.slider_horizontal_3,
                 color: ink,
                 size: 18,
@@ -385,36 +432,37 @@ class HomeView extends GetView<HomeController> {
     );
   }
 
-  // ─── Stats Row ────────────────────────────────────────────────────────────
-  Widget _buildStatsRow() {
-    return Obx(
-      () => Row(
-        children: [
-          _buildStatChip(
-            CupertinoIcons.flame,
-            '${controller.streak.value}',
-            'Streak',
-            coral,
-            onTap: controller.navigateToStreakDetails,
-          ),
-          const SizedBox(width: 12),
-          _buildStatChip(
-            CupertinoIcons.sportscourt,
-            '${controller.sessionsCount.value}',
-            'Sessions',
-            sky,
-            onTap: controller.navigateToSessionsDetails,
-          ),
-          const SizedBox(width: 12),
-          _buildStatChip(
-            CupertinoIcons.rosette,
-            '${controller.goalsCount.value}',
-            'Goals',
-            neon,
-            onTap: controller.navigateToGoalsDetails,
-          ),
-        ],
-      ),
+  Widget _buildStatsRow(
+    BuildContext context,
+    HomeState homeState,
+    HomeNotifier controller,
+  ) {
+    return Row(
+      children: [
+        _buildStatChip(
+          CupertinoIcons.flame,
+          '${homeState.streak}',
+          'Streak',
+          coral,
+          onTap: () => controller.navigateToStreakDetails(context),
+        ),
+        const SizedBox(width: 12),
+        _buildStatChip(
+          CupertinoIcons.sportscourt,
+          '${homeState.sessionsCount}',
+          'Sessions',
+          sky,
+          onTap: () => controller.navigateToSessionsDetails(context),
+        ),
+        const SizedBox(width: 12),
+        _buildStatChip(
+          CupertinoIcons.rosette,
+          '${homeState.goalsCount}',
+          'Goals',
+          neon,
+          onTap: () => controller.navigateToGoalsDetails(context),
+        ),
+      ],
     );
   }
 
@@ -442,8 +490,8 @@ class HomeView extends GetView<HomeController> {
               const SizedBox(height: 8),
               Text(
                 value,
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: text,
                   fontSize: 22,
                   fontWeight: FontWeight.w800,
                   letterSpacing: -0.5,
@@ -458,9 +506,9 @@ class HomeView extends GetView<HomeController> {
     );
   }
 
-  // ─── Category Tabs ────────────────────────────────────────────────────────
-  Widget _buildCategoryTabs() {
+  Widget _buildCategoryTabs(HomeState homeState, HomeNotifier controller) {
     final categories = [
+      {'icon': CupertinoIcons.sparkles, 'label': 'All'},
       {'icon': CupertinoIcons.sportscourt, 'label': 'Strength'},
       {'icon': CupertinoIcons.person_2, 'label': 'Yoga'},
       {'icon': CupertinoIcons.bolt, 'label': 'Cardio'},
@@ -475,114 +523,137 @@ class HomeView extends GetView<HomeController> {
         itemCount: categories.length,
         separatorBuilder: (_, __) => const SizedBox(width: 8),
         itemBuilder: (context, index) {
-          return Obx(() {
-            final isSelected = controller.selectedCategoryIndex.value == index;
-            return GestureDetector(
-              onTap: () => controller.selectCategory(index),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                curve: Curves.easeOutCubic,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 0,
-                ),
-                decoration: BoxDecoration(
-                  color: isSelected ? neon : card,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: isSelected ? neon : stroke),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      categories[index]['icon'] as IconData,
-                      color: isSelected ? ink : muted,
-                      size: 16,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      categories[index]['label'] as String,
-                      style: TextStyle(
-                        color: isSelected ? ink : Colors.white70,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
+          final isSelected = homeState.selectedCategoryIndex == index;
+          return GestureDetector(
+            onTap: () => controller.selectCategory(index),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOutCubic,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(
+                color: isSelected ? neon : card,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: isSelected ? neon : stroke),
               ),
-            );
-          });
+              child: Row(
+                children: [
+                  Icon(
+                    categories[index]['icon'] as IconData,
+                    color: isSelected ? ink : muted,
+                    size: 16,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    categories[index]['label'] as String,
+                    style: TextStyle(
+                      color: isSelected ? ink : text.withValues(alpha: 0.7),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
         },
       ),
     );
   }
 
-  // ─── Upcoming Sessions ────────────────────────────────────────────────────
-  Widget _buildUpcomingSessionsSection() {
-    return Obx(() {
-      if (controller.upcomingBookings.isEmpty) return const SizedBox.shrink();
+  Widget _buildUpcomingSessionsSection(BuildContext context, WidgetRef ref) {
+    final bookingsState = ref.watch(bookingsServiceProvider);
+    final upcomingBookings = bookingsState.upcomingBookings;
 
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildLabel(
-            'Upcoming Sessions',
-            onSeeAll: () => Get.toNamed('/all-sessions'),
-          ),
-          const SizedBox(height: 16),
-          ...controller.upcomingBookings
-              .take(2)
-              .map(
-                (booking) => Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: RepaintBoundary(child: _buildSessionCard(booking)),
-                ),
+    if (upcomingBookings.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildLabel(
+          'Upcoming Sessions',
+          onSeeAll: () => context.push('/all-sessions'),
+        ),
+        const SizedBox(height: 16),
+        ...upcomingBookings.take(2).map(
+              (booking) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: RepaintBoundary(child: _buildSessionCard(context, booking)),
               ),
-          const SizedBox(height: 28),
-        ],
-      );
-    });
+            ),
+        const SizedBox(height: 28),
+      ],
+    );
   }
 
-  Widget _buildSessionCard(Map<String, dynamic> booking) {
-    final isConfirmed = booking['status'] == 'confirmed';
-    // Support both BookingsService key names and legacy keys.
-    final title =
-        (booking['specialty'] ?? booking['sessionType'] ?? '') as String;
-    final trainerName =
-        (booking['trainer'] ?? booking['trainerName'] ?? '') as String;
-    final portrait = booking['portrait'] as int?;
+  Widget _buildSessionCard(BuildContext context, Map<String, dynamic> booking) {
+    final status = (booking['status'] ?? 'pending') as String;
+    final isConfirmed = status == 'confirmed';
+    final title = (booking['specialty'] ?? booking['sessionType'] ?? '') as String;
+    final trainerName = (booking['trainer'] ?? booking['trainerName'] ?? '') as String;
+    
+    final statusColor = isConfirmed ? neon : const Color(0xFFFFB347); // warm orange/gold for pending
+    final statusText = isConfirmed ? 'Confirmed' : 'Pending Approval';
+    final paid = booking['paid'] == true;
+    final amountPaid = (booking['amountPaid'] as num?)?.toInt() ?? 0;
+    final price = (booking['price'] as num?)?.toInt() ?? 0;
+    final paymentStatus = booking['paymentStatus'] as String? ?? (paid ? 'fully_paid' : (amountPaid > 0 ? 'partially_paid' : 'unpaid'));
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final String paymentLabelText;
+    final Color paymentColor;
+    if (paymentStatus == 'fully_paid') {
+      paymentLabelText = '\$$price • Paid';
+      paymentColor = neon;
+    } else if (paymentStatus == 'partially_paid') {
+      paymentLabelText = '50% Paid (\$$amountPaid)';
+      paymentColor = isDark ? const Color(0xFFFFBB33) : const Color(0xFFD97706); // Gold/Amber
+    } else {
+      paymentLabelText = '\$$price • Tap to Pay';
+      paymentColor = coral;
+    }
 
     return GestureDetector(
-      onTap: () => Get.toNamed('/all-sessions'),
+      onTap: () => context.push('/my-bookings', extra: const {'tab': 0}),
       child: Container(
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: isConfirmed ? neon.withValues(alpha: 0.08) : card,
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: isConfirmed
+                ? [neon.withValues(alpha: 0.12), neon.withValues(alpha: 0.02)]
+                : [card, card.withValues(alpha: 0.7)],
+          ),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: isConfirmed ? neon.withValues(alpha: 0.4) : stroke,
+            color: isConfirmed ? neon.withValues(alpha: 0.35) : stroke,
+            width: isConfirmed ? 1.5 : 1.0,
           ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.15),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
         child: Row(
           children: [
-            // Trainer avatar or sport icon
-            ClipRRect(
-              borderRadius: BorderRadius.circular(14),
-              child:
-                  portrait != null
-                      ? CachedNetworkImage(
-                        imageUrl:
-                            'https://randomuser.me/api/portraits/men/$portrait.jpg',
-                        width: 52,
-                        height: 52,
-                        fit: BoxFit.cover,
-                        memCacheWidth: 104,
-                        memCacheHeight: 104,
-                        fadeInDuration: const Duration(milliseconds: 120),
-                        errorWidget: (_, __, ___) => _sessionIcon(isConfirmed),
-                      )
-                      : _sessionIcon(isConfirmed),
+            Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: isConfirmed ? neon.withValues(alpha: 0.25) : stroke,
+                  width: 1.5,
+                ),
+              ),
+              child: PremiumAvatar(
+                name: (booking['trainer'] ?? booking['trainerName'] ?? 'Trainer').toString(),
+                customPhotoUrl: booking['trainerPhotoUrl']?.toString(),
+                size: 52,
+                borderRadius: 12,
+                isTrainer: true,
+              ),
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -594,42 +665,139 @@ class HomeView extends GetView<HomeController> {
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 15,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.2,
                     ),
                   ),
-                  const SizedBox(height: 3),
+                  const SizedBox(height: 2),
                   Text(
                     'with $trainerName',
-                    style: TextStyle(color: muted, fontSize: 12),
+                    style: TextStyle(
+                      color: muted,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: statusColor.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                            color: statusColor.withValues(alpha: 0.25),
+                            width: 1,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 6,
+                              height: 6,
+                              decoration: BoxDecoration(
+                                color: statusColor,
+                                shape: BoxShape.circle,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: statusColor.withValues(alpha: 0.4),
+                                    blurRadius: 4,
+                                    spreadRadius: 1,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              statusText,
+                              style: TextStyle(
+                                color: statusColor,
+                                fontSize: 9,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (price > 0)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: paymentColor.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                              color: paymentColor.withValues(alpha: 0.25),
+                              width: 1,
+                            ),
+                          ),
+                          child: Text(
+                            paymentLabelText,
+                            style: TextStyle(
+                              color: paymentColor,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                 ],
               ),
             ),
+            const SizedBox(width: 8),
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 10,
-                    vertical: 4,
+                    vertical: 5,
                   ),
                   decoration: BoxDecoration(
                     color: isConfirmed ? neon : raised,
                     borderRadius: BorderRadius.circular(8),
+                    boxShadow: isConfirmed
+                        ? [
+                            BoxShadow(
+                              color: neon.withValues(alpha: 0.2),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
+                            ),
+                          ]
+                        : null,
                   ),
                   child: Text(
                     booking['date'] ?? '',
                     style: TextStyle(
                       color: isConfirmed ? ink : Colors.white,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
                 ),
-                const SizedBox(height: 5),
-                Text(
-                  booking['time'] ?? '',
-                  style: const TextStyle(color: Colors.white60, fontSize: 12),
+                const SizedBox(height: 6),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      CupertinoIcons.clock,
+                      size: 11,
+                      color: isConfirmed ? neon.withValues(alpha: 0.8) : muted,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      booking['time'] ?? '',
+                      style: TextStyle(
+                        color: isConfirmed ? Colors.white.withValues(alpha: 0.9) : Colors.white60,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -655,74 +823,84 @@ class HomeView extends GetView<HomeController> {
     );
   }
 
-  // ─── Section Label ────────────────────────────────────────────────────────
   Widget _buildLabel(String title, {VoidCallback? onSeeAll}) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(
           title,
-          style: const TextStyle(
-            color: Colors.white,
+          style: TextStyle(
+            color: text,
             fontSize: 18,
             fontWeight: FontWeight.w800,
             letterSpacing: -0.3,
           ),
         ),
-        GestureDetector(
-          onTap: onSeeAll,
-          child: Text(
-            'See all',
-            style: TextStyle(
-              color: neon,
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
+        if (onSeeAll != null)
+          GestureDetector(
+            onTap: onSeeAll,
+            child: Text(
+              'See all',
+              style: TextStyle(
+                color: neon,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
-        ),
       ],
     );
   }
 
-  // ─── Trainers List ────────────────────────────────────────────────────────
-  Widget _buildTrainersList() {
+  Widget _buildTrainersList(
+    BuildContext context,
+    WidgetRef ref,
+    HomeNotifier controller,
+  ) {
+    final trainers = controller.filteredTrainers;
+    if (trainers.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(CupertinoIcons.person_2, color: muted, size: 32),
+            const SizedBox(height: 8),
+            Text(
+              'No trainers found',
+              style: TextStyle(color: muted, fontSize: 13),
+            ),
+          ],
+        ),
+      );
+    }
     return SizedBox(
       height: 224,
-      child: Obx(() {
-        final trainers = controller.filteredTrainers;
-        if (trainers.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(CupertinoIcons.person_2, color: muted, size: 32),
-                const SizedBox(height: 8),
-                Text(
-                  'No trainers found',
-                  style: TextStyle(color: muted, fontSize: 13),
-                ),
-              ],
-            ),
-          );
-        }
-        return ListView.separated(
-          scrollDirection: Axis.horizontal,
-          itemCount: trainers.length,
-          separatorBuilder: (_, __) => const SizedBox(width: 14),
-          itemBuilder:
-              (_, i) => RepaintBoundary(child: _buildTrainerCard(trainers[i])),
-        );
-      }),
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: trainers.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 14),
+        itemBuilder: (_, i) => RepaintBoundary(
+          child: _buildTrainerCard(context, ref, controller, trainers[i]),
+        ),
+      ),
     );
   }
 
-  Widget _buildTrainerCard(Map<String, dynamic> trainer) {
+  Widget _buildTrainerCard(
+    BuildContext context,
+    WidgetRef ref,
+    HomeNotifier controller,
+    Map<String, dynamic> trainer,
+  ) {
     final isAvailable = trainer['isAvailable'] == true;
-    final favSvc = Get.find<FavouritesService>();
+    final favourites = ref.watch(favouritesServiceProvider);
+    final favNotifier = ref.read(favouritesServiceProvider.notifier);
     final trainerName = trainer['name'] as String? ?? '';
 
+    final isFav = favourites.any((f) => f['name'] == trainerName);
+
     return GestureDetector(
-      onTap: () => controller.navigateToTrainerDetails(trainer),
+      onTap: () => controller.navigateToTrainerDetails(context, trainer),
       child: Container(
         width: 148,
         decoration: BoxDecoration(
@@ -734,7 +912,6 @@ class HomeView extends GetView<HomeController> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Image area
             Stack(
               children: [
                 ClipRRect(
@@ -745,31 +922,23 @@ class HomeView extends GetView<HomeController> {
                     height: 96,
                     width: double.infinity,
                     color: raised,
-                    child: CachedNetworkImage(
-                      imageUrl: trainer['image'] ?? '',
-                      fit: BoxFit.cover,
-                      memCacheWidth: 320,
-                      memCacheHeight: 208,
-                      fadeInDuration: const Duration(milliseconds: 120),
-                      errorWidget:
-                          (_, __, ___) => Center(
-                            child: Icon(
-                              CupertinoIcons.person_fill,
-                              color: muted,
-                              size: 36,
-                            ),
-                          ),
-                    ),
+                    child: (trainer['image'] != null && (trainer['image'] as String).isNotEmpty)
+                        ? CachedNetworkImage(
+                            imageUrl: trainer['image'] as String,
+                            fit: BoxFit.cover,
+                            memCacheWidth: 320,
+                            memCacheHeight: 208,
+                            fadeInDuration: const Duration(milliseconds: 120),
+                            errorWidget: (_, __, ___) => _buildFallbackWidget(trainerName),
+                          )
+                        : _buildFallbackWidget(trainerName),
                   ),
                 ),
                 Positioned(
                   top: 8,
                   left: 8,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 7,
-                      vertical: 3,
-                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                     decoration: BoxDecoration(
                       color: isAvailable ? neon : raised,
                       borderRadius: BorderRadius.circular(6),
@@ -798,38 +967,30 @@ class HomeView extends GetView<HomeController> {
                     ),
                   ),
                 ),
-                // Heart / favourite button
                 Positioned(
                   top: 6,
                   right: 6,
-                  child: Obx(() {
-                    final isFav = favSvc.isFavourite(trainerName);
-                    return GestureDetector(
-                      onTap: () => favSvc.toggle(trainer),
-                      child: Container(
-                        width: 28,
-                        height: 28,
-                        decoration: BoxDecoration(
-                          color:
-                              isFav
-                                  ? coral.withValues(alpha: 0.9)
-                                  : Colors.black.withValues(alpha: 0.45),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          isFav
-                              ? CupertinoIcons.heart_fill
-                              : CupertinoIcons.heart,
-                          color: Colors.white,
-                          size: 14,
-                        ),
+                  child: GestureDetector(
+                    onTap: () => favNotifier.toggle(trainer),
+                    child: Container(
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        color: isFav
+                            ? coral.withValues(alpha: 0.9)
+                            : Colors.black.withValues(alpha: 0.45),
+                        shape: BoxShape.circle,
                       ),
-                    );
-                  }),
+                      child: Icon(
+                        isFav ? CupertinoIcons.heart_fill : CupertinoIcons.heart,
+                        color: Colors.white,
+                        size: 14,
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),
-            // Info
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
               child: Column(
@@ -837,8 +998,8 @@ class HomeView extends GetView<HomeController> {
                 children: [
                   Text(
                     trainer['name'] ?? '',
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: text,
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
                     ),
@@ -862,8 +1023,8 @@ class HomeView extends GetView<HomeController> {
                           const SizedBox(width: 3),
                           Text(
                             '${trainer['rating']}',
-                            style: const TextStyle(
-                              color: Colors.white,
+                            style: TextStyle(
+                              color: text,
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
                             ),
@@ -872,8 +1033,8 @@ class HomeView extends GetView<HomeController> {
                       ),
                       Text(
                         '\$${trainer['pricePerHour']}/h',
-                        style: const TextStyle(
-                          color: Colors.white70,
+                        style: TextStyle(
+                          color: text.withValues(alpha: 0.7),
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
                         ),
@@ -889,7 +1050,7 @@ class HomeView extends GetView<HomeController> {
                       borderRadius: BorderRadius.circular(7),
                       border: Border.all(color: neon.withValues(alpha: 0.25)),
                     ),
-                    child: const Text(
+                    child: Text(
                       'View Profile →',
                       textAlign: TextAlign.center,
                       style: TextStyle(
@@ -908,270 +1069,352 @@ class HomeView extends GetView<HomeController> {
     );
   }
 
-  Widget _buildTrainerFeedSection() {
-    return Obx(() {
-      final posts = controller.latestTrainerPosts;
-      if (posts.isEmpty) {
-        return const SizedBox.shrink();
-      }
+  Widget _buildFallbackWidget(String name) {
+    final fallbackUrl = getTrainerFallbackImageUrl(name);
 
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildLabel('Trainer Feed'),
-          const SizedBox(height: 14),
-          SizedBox(
-            height: 240,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: posts.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 12),
-              itemBuilder:
-                  (_, i) => RepaintBoundary(child: _buildPostCard(posts[i])),
-            ),
-          ),
-        ],
-      );
-    });
+    return CachedNetworkImage(
+      imageUrl: fallbackUrl,
+      fit: BoxFit.cover,
+      memCacheWidth: 320,
+      memCacheHeight: 208,
+      fadeInDuration: const Duration(milliseconds: 120),
+      errorWidget: (_, __, ___) => Center(
+        child: Icon(
+          CupertinoIcons.person_fill,
+          color: muted,
+          size: 36,
+        ),
+      ),
+    );
   }
 
-  Widget _buildPostCard(Map<String, dynamic> post) {
-    final trainerName =
-        (post['trainerName'] ?? post['authorName'] ?? 'Trainer').toString();
+  Widget _buildTrainerFeedSection(
+    BuildContext context,
+    WidgetRef ref,
+    HomeState homeState,
+    HomeNotifier controller,
+  ) {
+    final posts = homeState.latestTrainerPosts;
+    if (posts.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildLabel(
+          'Trainer Feed',
+          onSeeAll: () => context.push('/all-feeds'),
+        ),
+        const SizedBox(height: 14),
+        SizedBox(
+          height: 280,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: posts.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 12),
+            itemBuilder: (_, i) => RepaintBoundary(
+              child: _buildPostCard(context, ref, homeState, controller, posts[i]),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPostCard(
+    BuildContext context,
+    WidgetRef ref,
+    HomeState homeState,
+    HomeNotifier controller,
+    Map<String, dynamic> post,
+  ) {
+    final trainerName = (post['trainerName'] ?? post['authorName'] ?? 'Trainer').toString();
     final trainerId = (post['trainerId'] ?? post['authorId'] ?? '').toString();
 
-    // Try to find the full trainer profile from the catalog
     Map<String, dynamic>? trainerProfile;
     if (trainerId.isNotEmpty) {
-      trainerProfile = controller.trainerCatalog.firstWhereOrNull(
+      trainerProfile = homeState.trainerCatalog.firstWhereOrNull(
         (t) => (t['trainerId'] ?? t['id']).toString() == trainerId,
       );
     }
 
-    if (trainerProfile == null) {
-      trainerProfile = controller.trainerCatalog.firstWhereOrNull(
-        (t) =>
-            _normalizeName(t['name']?.toString() ?? '') ==
-            _normalizeName(trainerName),
-      );
-    }
+    trainerProfile ??= homeState.trainerCatalog.firstWhereOrNull(
+      (t) => _normalizeName(t['name']?.toString() ?? '') == _normalizeName(trainerName),
+    );
 
-    // Use post data as fallback if trainer profile not found
     final trainer = trainerProfile ?? post;
     final name = (trainer['name'] ?? trainerName).toString();
     final specialty = (trainer['specialty'] ?? 'Fitness').toString();
-    final price = (trainer['pricePerHour'] ?? 45).toString();
-    final imageUrl = (trainer['image'] ?? trainer['imageUrl'] ?? '').toString();
+    final trainerImageUrl = (
+      trainerProfile?['image'] ??
+      trainerProfile?['imageUrl'] ??
+      post['trainerPhotoUrl'] ??
+      ''
+    ).toString();
 
-    // Get date from post if available, otherwise use today
-    final DateTime sessionDate = _parseDate(post['date']) ?? DateTime.now();
-    final String dateStr = _formatDate(sessionDate);
-    final String timeStr = _formatTime(post['time'] ?? '07:00 AM');
-    final String sessionType = (post['sessionType'] ?? '1-on-1').toString();
+    final title = (post['title'] ?? '').toString();
+    final caption = (post['caption'] ?? '').toString();
+    final category = (post['category'] ?? 'Workout').toString();
+    final postImageUrl = (post['imageUrl'] ?? '').toString();
+    final likes = (post['likesCount'] ?? 0);
+    final comments = (post['commentsCount'] ?? 0);
+    final currentUid = FirebaseAuth.instance.currentUser?.uid;
+    final likedBy = List<String>.from(post['likedBy'] ?? <dynamic>[]);
+    final isLiked = currentUid != null && likedBy.contains(currentUid);
+    final postId = (post['id'] ?? post['postId'] ?? '').toString();
 
     return GestureDetector(
-      onTap: () => controller.navigateToTrainerFromPost(post),
+      onTap: () => controller.navigateToTrainerFromPost(context, post),
       child: Container(
-        width: 340,
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 14),
+        width: 290,
+        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: card,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(18),
           border: Border.all(color: stroke),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
           children: [
-            // ─── Header: Avatar + Info + Open Button ──────────────────
+            // Header Row (Trainer avatar + name + category badge)
             Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Avatar
                 Container(
-                  width: 56,
-                  height: 56,
+                  width: 36,
+                  height: 36,
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(12),
-                    color: raised,
-                    border: Border.all(color: stroke),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: neon.withOpacity(0.3), width: 1.5),
                   ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child:
-                        imageUrl.isNotEmpty
-                            ? CachedNetworkImage(
-                              imageUrl: imageUrl,
-                              fit: BoxFit.cover,
-                              errorWidget:
-                                  (_, __, ___) => const Center(
-                                    child: Icon(
-                                      CupertinoIcons.person_fill,
-                                      color: Colors.white54,
-                                      size: 28,
-                                    ),
-                                  ),
-                            )
-                            : const Center(
-                              child: Icon(
-                                CupertinoIcons.person_fill,
-                                color: Colors.white54,
-                                size: 28,
-                              ),
-                            ),
+                  child: PremiumAvatar(
+                    name: name,
+                    customPhotoUrl: trainerImageUrl,
+                    size: 36,
+                    borderRadius: 8.5,
+                    isTrainer: true,
                   ),
                 ),
-                const SizedBox(width: 12),
-                // Name & Specialty
+                const SizedBox(width: 8),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
                         name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
+                        style: GoogleFonts.dmSans(
+                          color: text,
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                      const SizedBox(height: 2),
                       Text(
                         specialty,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: muted, fontSize: 12),
+                        style: GoogleFonts.dmSans(
+                          color: muted,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(width: 8),
-                // Open Button
-                GestureDetector(
-                  onTap: () => controller.navigateToTrainerFromPost(post),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: transparent,
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: neon),
-                    ),
-                    child: const Text(
-                      'Open',
-                      style: TextStyle(
-                        color: neon,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.3,
-                      ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: sky.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: sky.withOpacity(0.2)),
+                  ),
+                  child: Text(
+                    category,
+                    style: GoogleFonts.dmSans(
+                      color: sky,
+                      fontSize: 9,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 14),
-
-            // ─── Date, Time & Session Type ───────────────────────────
-            Row(
-              children: [
-                // Date
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(CupertinoIcons.calendar, color: muted, size: 14),
-                    const SizedBox(width: 4),
-                    Text(dateStr, style: TextStyle(color: muted, fontSize: 11)),
-                  ],
-                ),
-                const SizedBox(width: 16),
-                // Time
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(CupertinoIcons.clock, color: muted, size: 14),
-                    const SizedBox(width: 4),
-                    Text(timeStr, style: TextStyle(color: muted, fontSize: 11)),
-                  ],
-                ),
-                const SizedBox(width: 16),
-                // Session Type
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(CupertinoIcons.person_2, color: muted, size: 14),
-                    const SizedBox(width: 4),
-                    Text(
-                      sessionType,
-                      style: TextStyle(color: muted, fontSize: 11),
-                    ),
-                  ],
-                ),
-              ],
+            const SizedBox(height: 10),
+            
+            // Post Image (if present)
+            Expanded(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: postImageUrl.isNotEmpty
+                    ? CachedNetworkImage(
+                        imageUrl: postImageUrl,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                        errorWidget: (_, __, ___) => _buildPlaceholderPostBg(),
+                      )
+                    : _buildPlaceholderPostBg(),
+              ),
             ),
-            const SizedBox(height: 14),
-
-            // ─── Price & Spots ───────────────────────────────────────
+            const SizedBox(height: 10),
+            
+            // Title
+            if (title.isNotEmpty) ...[
+              Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.dmSans(
+                  color: text,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 3),
+            ],
+            
+            // Caption
+            Text(
+              caption.isNotEmpty ? caption : 'Tap to read this post from $name.',
+              maxLines: title.isNotEmpty ? 2 : 3,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.dmSans(
+                color: text.withValues(alpha: 0.7),
+                fontSize: 11,
+                height: 1.35,
+              ),
+            ),
+            const SizedBox(height: 10),
+            
+            // Footer (likes/comments count + date/view details link)
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                Row(
                   children: [
-                    Text(
-                      '\$$price/session',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.5,
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () {
+                        if (postId.isNotEmpty) {
+                          ref.read(homeNotifierProvider.notifier).togglePostLike(postId);
+                        }
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+                        child: Row(
+                          children: [
+                            Icon(
+                              isLiked ? CupertinoIcons.heart_fill : CupertinoIcons.heart,
+                              color: isLiked ? coral : muted,
+                              size: 14,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              likes.toString(),
+                              style: GoogleFonts.dmSans(
+                                color: isLiked ? coral : muted,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 3),
-                    Text(
-                      '1 spot left',
-                      style: TextStyle(
-                        color: neon,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
+                    const SizedBox(width: 16),
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () {
+                        if (postId.isNotEmpty) {
+                          showModalBottomSheet(
+                            context: context,
+                            isScrollControlled: true,
+                            backgroundColor: Colors.transparent,
+                            builder: (context) => PostCommentsSheet(
+                              postId: postId,
+                              trainerName: name,
+                            ),
+                          );
+                        }
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+                        child: Row(
+                          children: [
+                            const Icon(CupertinoIcons.chat_bubble, color: sky, size: 14),
+                            const SizedBox(width: 4),
+                            // Real-time total count: comments + all replies
+                            StreamBuilder<QuerySnapshot>(
+                              stream: postId.isNotEmpty
+                                  ? FirebaseFirestore.instance
+                                      .collection('trainerPosts')
+                                      .doc(postId)
+                                      .collection('comments')
+                                      .snapshots()
+                                  : const Stream.empty(),
+                              builder: (context, snap) {
+                                int total = comments; // fallback until stream loads
+                                if (snap.hasData) {
+                                  final docs = snap.data!.docs;
+                                  // Sum top-level comments + replies inside each
+                                  total = docs.fold(0, (sum, doc) {
+                                    final data = doc.data() as Map<String, dynamic>? ?? {};
+                                    final replyCount = (data['repliesCount'] as num?)?.toInt() ?? 0;
+                                    return sum + 1 + replyCount;
+                                  });
+                                }
+                                return Text(
+                                  total.toString(),
+                                  style: GoogleFonts.dmSans(
+                                    color: muted,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ],
                 ),
-                // Book Session Button
-                GestureDetector(
-                  onTap: () {
-                    Get.toNamed('/book-session', arguments: trainer);
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      color: neon,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Text(
-                      'Book Session',
-                      style: TextStyle(
-                        color: ink,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.3,
-                      ),
-                    ),
+                const Spacer(),
+                Text(
+                  'View details →',
+                  style: GoogleFonts.dmSans(
+                    color: neon,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
               ],
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildPlaceholderPostBg() {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            sky.withOpacity(0.05),
+            lilac.withOpacity(0.05),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      alignment: Alignment.center,
+      child: Icon(
+        CupertinoIcons.doc_text_fill,
+        color: muted.withOpacity(0.24),
+        size: 32,
       ),
     );
   }
@@ -1190,20 +1433,7 @@ class HomeView extends GetView<HomeController> {
   }
 
   String _formatDate(DateTime date) {
-    final months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
-    ];
+    final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     return '${months[date.month - 1]} ${date.day}, ${date.year}';
   }
 
@@ -1216,251 +1446,255 @@ class HomeView extends GetView<HomeController> {
     return name.toLowerCase().replaceAll(RegExp(r'\s+'), '');
   }
 
-  // ─── Quick Actions ────────────────────────────────────────────────────────
-  Widget _buildQuickActions() {
+  Widget _buildQuickActions(BuildContext context, WidgetRef ref) {
     final actions = [
       {
         'icon': CupertinoIcons.calendar,
         'label': 'Book',
         'color': neon,
-        'onTap': controller.navigateToBook,
+        'onTap': () => ref.read(homeNotifierProvider.notifier).navigateToBook(context),
       },
       {
         'icon': CupertinoIcons.time,
         'label': 'History',
         'color': sky,
-        'onTap': controller.navigateToHistory,
+        'onTap': () => ref.read(homeNotifierProvider.notifier).navigateToHistory(context),
       },
       {
         'icon': CupertinoIcons.creditcard,
         'label': 'Payment',
         'color': lilac,
-        'onTap': controller.navigateToPayment,
+        'onTap': () => ref.read(homeNotifierProvider.notifier).navigateToPayment(context),
       },
       {
         'icon': CupertinoIcons.headphones,
         'label': 'Support',
         'color': coral,
-        'onTap': () => _showSupportSheet(),
+        'onTap': () => _showSupportSheet(context, ref),
       },
     ];
 
     return Row(
-      children:
-          actions.map((action) {
-            final accent = action['color'] as Color;
-            return Expanded(
-              child: Padding(
-                padding: EdgeInsets.only(
-                  right: action == actions.last ? 0 : 10,
+      children: actions.map((action) {
+        final accent = action['color'] as Color;
+        return Expanded(
+          child: Padding(
+            padding: EdgeInsets.only(
+              right: action == actions.last ? 0 : 10,
+            ),
+            child: GestureDetector(
+              onTap: action['onTap'] as VoidCallback,
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                decoration: BoxDecoration(
+                  color: card,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: stroke),
                 ),
-                child: GestureDetector(
-                  onTap: action['onTap'] as VoidCallback,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    decoration: BoxDecoration(
-                      color: card,
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: stroke),
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: accent.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Icon(
-                            action['icon'] as IconData,
-                            color: accent,
-                            size: 20,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          action['label'] as String,
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            );
-          }).toList(),
-    );
-  }
-
-  // ─── Special Offer Card ───────────────────────────────────────────────────
-  Widget _buildSpecialOfferCard() {
-    return Obx(() {
-      if (!controller.promoActive.value) return const SizedBox.shrink();
-      return GestureDetector(
-        onTap: controller.claimPromo,
-        child: Container(
-          padding: const EdgeInsets.all(22),
-          decoration: BoxDecoration(
-            color: neon,
-            borderRadius: BorderRadius.circular(24),
-          ),
-          child: Row(
-            children: [
-              Expanded(
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 4,
-                      ),
+                      width: 40,
+                      height: 40,
                       decoration: BoxDecoration(
-                        color: ink.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        controller.promoLabel.value,
-                        style: const TextStyle(
-                          color: ink,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      controller.promoTitle.value,
-                      style: const TextStyle(
-                        color: ink,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w900,
-                        height: 1.15,
-                        letterSpacing: -0.5,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 12,
-                      ),
-                      decoration: BoxDecoration(
-                        color: ink,
+                        color: accent.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: const Text(
-                        'Claim Now →',
-                        style: TextStyle(
-                          color: neon,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w800,
-                        ),
+                      child: Icon(
+                        action['icon'] as IconData,
+                        color: accent,
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      action['label'] as String,
+                      style: TextStyle(
+                        color: text.withValues(alpha: 0.7),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(width: 16),
-              Opacity(
-                opacity: 0.2,
-                child: Text(
-                  controller.promoDiscount.value,
-                  style: const TextStyle(
-                    color: ink,
-                    fontSize: 56,
-                    fontWeight: FontWeight.w900,
-                    height: 0.9,
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
-        ),
-      );
-    });
+        );
+      }).toList(),
+    );
   }
 
-  // ─── Support Bottom Sheet ─────────────────────────────────────────────────
-  void _showSupportSheet() {
-    Get.bottomSheet(
-      Container(
-        padding: const EdgeInsets.fromLTRB(24, 16, 24, 40),
-        decoration: const BoxDecoration(
-          color: card,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+  Widget _buildSpecialOfferCard(
+    BuildContext context,
+    HomeState homeState,
+    HomeNotifier controller,
+  ) {
+    if (!homeState.promoActive) return const SizedBox.shrink();
+    return GestureDetector(
+      onTap: () => controller.claimPromo(context),
+      child: Container(
+        padding: const EdgeInsets.all(22),
+        decoration: BoxDecoration(
+          color: neon,
+          borderRadius: BorderRadius.circular(24),
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Row(
           children: [
-            // drag handle
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: stroke,
-                  borderRadius: BorderRadius.circular(2),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: ink.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          CupertinoIcons.flame_fill,
+                          color: ink,
+                          size: 10,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          homeState.promoLabel,
+                          style: TextStyle(
+                            color: ink,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    homeState.promoTitle,
+                    style: TextStyle(
+                      color: ink,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                      height: 1.15,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: ink,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      homeState.promoButtonText,
+                      style: TextStyle(
+                        color: neon,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 16),
+            Opacity(
+              opacity: 0.2,
+              child: Text(
+                homeState.promoDiscount,
+                style: TextStyle(
+                  color: ink,
+                  fontSize: 56,
+                  fontWeight: FontWeight.w900,
+                  height: 0.9,
                 ),
               ),
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              'Contact Support',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Our team is available 24 / 7 to help you.',
-              style: TextStyle(color: muted, fontSize: 14),
-            ),
-            const SizedBox(height: 24),
-            _supportTile(
-              icon: CupertinoIcons.chat_bubble_text,
-              label: 'Live Chat',
-              sub: 'Avg. response < 2 min',
-              accent: sky,
-              onTap: () {
-                Get.back();
-                Get.toNamed('/message-screen');
-              },
-            ),
-            const SizedBox(height: 12),
-            _supportTile(
-              icon: CupertinoIcons.envelope,
-              label: 'Email Us',
-              sub: 'support@gymtrainer.app',
-              accent: lilac,
-              onTap: () {
-                Get.back();
-                Get.snackbar(
-                  'Email Support',
-                  'support@gymtrainer.app',
-                  snackPosition: SnackPosition.BOTTOM,
-                  backgroundColor: card,
-                  colorText: Colors.white,
-                  margin: const EdgeInsets.all(16),
-                  borderRadius: 12,
-                  icon: const Icon(CupertinoIcons.envelope_fill, color: lilac),
-                );
-              },
             ),
           ],
         ),
       ),
+    );
+  }
+
+  void _showSupportSheet(BuildContext context, WidgetRef ref) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
       isScrollControlled: true,
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 40),
+          decoration: BoxDecoration(
+            color: card,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: stroke,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'Contact Support',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Our team is available 24 / 7 to help you.',
+                style: TextStyle(color: muted, fontSize: 14),
+              ),
+              const SizedBox(height: 24),
+              _supportTile(
+                icon: CupertinoIcons.chat_bubble_text,
+                label: 'Live Chat',
+                sub: 'Avg. response < 2 min',
+                accent: sky,
+                onTap: () {
+                  Navigator.pop(context);
+                  ref.read(homeNotifierProvider.notifier).navigateToMessages();
+                },
+              ),
+              const SizedBox(height: 12),
+              _supportTile(
+                icon: CupertinoIcons.envelope,
+                label: 'Email Us',
+                sub: 'support@gymtrainer.app',
+                accent: lilac,
+                onTap: () {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: const Text('Email Support: support@gymtrainer.app'),
+                      backgroundColor: card,
+                      behavior: SnackBarBehavior.floating,
+                      margin: const EdgeInsets.all(16),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -1507,11 +1741,21 @@ class HomeView extends GetView<HomeController> {
                 Text(sub, style: TextStyle(color: muted, fontSize: 12)),
               ],
             ),
-            const Spacer(),
-            Icon(CupertinoIcons.chevron_right, color: muted, size: 16),
-          ],
-        ),
-      ),
+             const Spacer(),
+             Icon(CupertinoIcons.chevron_right, color: muted, size: 16),
+           ],
+         ),
+       ),
+     );
+   }
+
+  Widget _buildFallbackHomeBookingAvatar(Map<String, dynamic> booking, bool isConfirmed) {
+    final name = (booking['trainer'] ?? booking['trainerName'] ?? 'Trainer').toString();
+    return InitialsAvatar(
+      name: name,
+      size: 52,
+      fontSize: 18,
+      borderRadius: 12,
     );
   }
 }

@@ -1,105 +1,99 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../routes/app_router.dart' show routerProvider, Routes;
+import '../../../providers/global_providers.dart';
 
-import '../../../routes/app_pages.dart';
-import '../../../services/user_role_service.dart';
-
-class SignUpController extends GetxController {
-  final nameController = TextEditingController();
-  final emailController = TextEditingController();
-  final passwordController = TextEditingController();
-  final confirmPasswordController = TextEditingController();
-  final isLoading = false.obs;
-
+class SignUpNotifier extends AutoDisposeNotifier<bool> {
   final _auth = FirebaseAuth.instance;
 
-  // Get UserRoleService lazily when needed, not at init time
-  UserRoleService get _roleService => Get.find<UserRoleService>();
+  @override
+  bool build() {
+    return false;
+  }
 
-  Future<void> signUp() async {
-    final name = nameController.text.trim();
-    final email = emailController.text.trim();
-    final password = passwordController.text.trim();
-    final confirmPassword = confirmPasswordController.text.trim();
+  Future<void> signUp(
+    BuildContext context, {
+    required String name,
+    required String email,
+    required String password,
+    required String confirmPassword,
+  }) async {
+    final trimmedName = name.trim();
+    final trimmedEmail = email.trim();
+    final trimmedPassword = password.trim();
+    final trimmedConfirmPassword = confirmPassword.trim();
 
-    if (name.isEmpty ||
-        email.isEmpty ||
-        password.isEmpty ||
-        confirmPassword.isEmpty) {
-      Get.snackbar(
-        'Error',
-        'Please fill in all fields',
-        backgroundColor: const Color(0xFFFF5C5C),
-        colorText: Colors.white,
-        snackPosition: SnackPosition.BOTTOM,
+    if (trimmedName.isEmpty ||
+        trimmedEmail.isEmpty ||
+        trimmedPassword.isEmpty ||
+        trimmedConfirmPassword.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please fill in all fields'),
+          backgroundColor: Color(0xFFFF5C5C),
+        ),
       );
       return;
     }
-    if (password != confirmPassword) {
-      Get.snackbar(
-        'Error',
-        'Passwords do not match',
-        backgroundColor: const Color(0xFFFF5C5C),
-        colorText: Colors.white,
-        snackPosition: SnackPosition.BOTTOM,
+    if (trimmedPassword != trimmedConfirmPassword) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Passwords do not match'),
+          backgroundColor: Color(0xFFFF5C5C),
+        ),
       );
       return;
     }
-    if (password.length < 6) {
-      Get.snackbar(
-        'Error',
-        'Password must be at least 6 characters',
-        backgroundColor: const Color(0xFFFF5C5C),
-        colorText: Colors.white,
-        snackPosition: SnackPosition.BOTTOM,
+    if (trimmedPassword.length < 6) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Password must be at least 6 characters'),
+          backgroundColor: Color(0xFFFF5C5C),
+        ),
       );
       return;
     }
 
-    isLoading.value = true;
+    state = true;
     try {
       final credential = await _auth.createUserWithEmailAndPassword(
-        email: email,
-        password: password,
+        email: trimmedEmail,
+        password: trimmedPassword,
       );
-      await credential.user?.updateDisplayName(name);
-      if (credential.user != null) {
-        await _roleService.ensureAndGetRole(credential.user!);
+      await credential.user?.updateDisplayName(trimmedName);
+      await credential.user?.reload();
+      final currentUser = _auth.currentUser;
+      if (currentUser != null) {
+        final roleService = ref.read(userRoleServiceProvider);
+        // Create the Firestore doc with profileCompleted: false
+        await roleService.ensureAndGetRole(currentUser, displayName: trimmedName);
       }
-      await _auth.signOut();
-      Get.snackbar(
-        'Account Created!',
-        'Please sign in to continue',
-        backgroundColor: const Color(0xFFCBFF47),
-        colorText: const Color(0xFF0A0A0F),
-        snackPosition: SnackPosition.BOTTOM,
-      );
-      Get.offAllNamed(Routes.LOGIN, arguments: {'email': email});
+      // Do NOT sign out — send new user directly into profile setup flow.
+      ref.read(routerProvider).go(Routes.WELCOME);
     } on FirebaseAuthException catch (e) {
       String message = 'Registration failed. Please try again.';
-      if (e.code == 'email-already-in-use')
+      if (e.code == 'email-already-in-use') {
         message = 'An account already exists with this email.';
-      if (e.code == 'invalid-email') message = 'Invalid email address.';
-      if (e.code == 'weak-password') message = 'Password is too weak.';
-      Get.snackbar(
-        'Error',
-        message,
-        backgroundColor: const Color(0xFFFF5C5C),
-        colorText: Colors.white,
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      } else if (e.code == 'invalid-email') {
+        message = 'Invalid email address.';
+      } else if (e.code == 'weak-password') {
+        message = 'Password is too weak.';
+      }
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            backgroundColor: const Color(0xFFFF5C5C),
+          ),
+        );
+      }
     } finally {
-      isLoading.value = false;
+      state = false;
     }
   }
-
-  @override
-  void onClose() {
-    nameController.dispose();
-    emailController.dispose();
-    passwordController.dispose();
-    confirmPasswordController.dispose();
-    super.onClose();
-  }
 }
+
+final signUpNotifierProvider = AutoDisposeNotifierProvider<SignUpNotifier, bool>(() {
+  return SignUpNotifier();
+});

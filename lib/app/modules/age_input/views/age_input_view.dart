@@ -1,20 +1,65 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
-
-import '../controllers/age_input_controller.dart';
 import '../../../../config/glass_ui.dart';
+import '../../../providers/global_providers.dart';
+import '../../../routes/app_router.dart' show Routes;
 
-class AgeInputView extends GetView<AgeInputController> {
+class AgeInputView extends ConsumerStatefulWidget {
   const AgeInputView({Key? key}) : super(key: key);
 
   @override
+  ConsumerState<AgeInputView> createState() => _AgeInputViewState();
+}
+
+class _AgeInputViewState extends ConsumerState<AgeInputView> {
+  late final TextEditingController _ageController;
+  int _age = 20;
+
+  @override
+  void initState() {
+    super.initState();
+    final profile = ref.read(userProfileServiceProvider);
+    _age = profile.age;
+    _ageController = TextEditingController(text: _age.toString());
+  }
+
+  @override
+  void dispose() {
+    _ageController.dispose();
+    super.dispose();
+  }
+
+  void _setAge(int value) {
+    setState(() {
+      _age = value;
+      _ageController.text = value.toString();
+    });
+  }
+
+  void _nextStep() {
+    if (_age > 0 && _age < 150) {
+      ref.read(userProfileServiceProvider.notifier).setAge(_age);
+      context.go(Routes.WEIGHT_INPUT);
+    } else {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Please enter a valid age')));
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final kNeon = Theme.of(context).colorScheme.primary;
     return Scaffold(
       backgroundColor: kInk,
       extendBodyBehindAppBar: true,
-      appBar: glassAppBar(title: 'Your Age', onBack: () => controller.goBack()),
+      appBar: glassAppBar(
+        title: 'Your Age',
+        onBack: () => context.go(Routes.GENDER_SELECTION),
+      ),
       body: Stack(
         children: [
           Positioned.fill(child: trainerBackground()),
@@ -26,7 +71,7 @@ class AgeInputView extends GetView<AgeInputController> {
                 children: [
                   ShaderMask(
                     shaderCallback:
-                        (b) => const LinearGradient(
+                        (b) => LinearGradient(
                           colors: [Colors.white, kNeon],
                         ).createShader(b),
                     child: Text(
@@ -50,17 +95,15 @@ class AgeInputView extends GetView<AgeInputController> {
                       children: [
                         ShaderMask(
                           shaderCallback:
-                              (b) => const LinearGradient(
+                              (b) => LinearGradient(
                                 colors: [Colors.white, kNeon],
                               ).createShader(b),
-                          child: Obx(
-                            () => Text(
-                              '${controller.age.value ?? 20}',
-                              style: const TextStyle(
-                                fontSize: 80,
-                                fontWeight: FontWeight.w800,
-                                color: Colors.white,
-                              ),
+                          child: Text(
+                            '$_age',
+                            style: const TextStyle(
+                              fontSize: 80,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
                             ),
                           ),
                         ),
@@ -83,21 +126,19 @@ class AgeInputView extends GetView<AgeInputController> {
                               enabledThumbRadius: 12,
                             ),
                           ),
-                          child: Obx(
-                            () => Slider(
-                              value: (controller.age.value ?? 20).toDouble(),
-                              min: 13,
-                              max: 100,
-                              divisions: 87,
-                              onChanged: (v) => controller.setAge(v.toInt()),
-                            ),
+                          child: Slider(
+                            value: _age.toDouble().clamp(13, 100),
+                            min: 13,
+                            max: 100,
+                            divisions: 87,
+                            onChanged: (v) => _setAge(v.toInt()),
                           ),
                         ),
                         const SizedBox(height: 24),
                         LiquidTile(
                           padding: EdgeInsets.zero,
                           child: TextField(
-                            controller: controller.ageController,
+                            controller: _ageController,
                             keyboardType: TextInputType.number,
                             style: const TextStyle(
                               color: Colors.white,
@@ -105,7 +146,11 @@ class AgeInputView extends GetView<AgeInputController> {
                             ),
                             onChanged: (v) {
                               final n = int.tryParse(v);
-                              if (n != null) controller.setAge(n);
+                              if (n != null) {
+                                setState(() {
+                                  _age = n;
+                                });
+                              }
                             },
                             decoration: const InputDecoration(
                               hintText: 'Or type here',
@@ -123,10 +168,7 @@ class AgeInputView extends GetView<AgeInputController> {
                       ],
                     ),
                   ),
-                  neonButton(
-                    label: 'Continue',
-                    onPressed: () => controller.nextStep(),
-                  ),
+                  neonButton(label: 'Continue', onPressed: _nextStep),
                   const SizedBox(height: 8),
                 ],
               ),

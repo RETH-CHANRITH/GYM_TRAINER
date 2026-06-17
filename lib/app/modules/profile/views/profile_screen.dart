@@ -1,10 +1,13 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../../config/glass_ui.dart';
 import '../../../services/user_profile_service.dart';
+import '../../../routes/app_router.dart' show Routes;
 
 const Color ink = Color(0xFF0A0A0F);
 const Color surface = Color(0xFF111118);
@@ -17,23 +20,23 @@ const Color sky = Color(0xFF5CE8FF);
 const Color lilac = Color(0xFFA78BFA);
 const Color muted = Color(0xFF6B6B7E);
 
-class ProfileScreen extends StatefulWidget {
+class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
 
   @override
-  State<ProfileScreen> createState() => _ProfileScreenState();
+  ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen> {
-  late final UserProfileService _profile;
-
-  @override
-  void initState() {
-    super.initState();
-    _profile = Get.find<UserProfileService>();
-  }
-
+class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   void _softTap() => HapticFeedback.selectionClick();
+
+  Color get ink => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF0A0A0F) : const Color(0xFFF9F9FC);
+  Color get card => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF17171F) : const Color(0xFFFFFFFF);
+  Color get raised => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF1E1E28) : const Color(0xFFF0EFF5);
+  Color get stroke => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF2A2A36) : const Color(0xFFE5E7EB);
+  Color get neon => Theme.of(context).colorScheme.primary;
+  Color get muted => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF6B6B7E) : Colors.black54;
+  Color get text => Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black87;
 
   Future<void> _showInfoSheet({
     required String title,
@@ -45,9 +48,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       backgroundColor: Colors.transparent,
       builder:
           (_) => Container(
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               color: card,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
             ),
             padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
             child: Column(
@@ -67,8 +70,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const SizedBox(height: 14),
                 Text(
                   title,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: text,
                     fontSize: 18,
                     fontWeight: FontWeight.w800,
                   ),
@@ -86,7 +89,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    child: const Text(
+                    child: Text(
                       'Got it',
                       style: TextStyle(color: ink, fontWeight: FontWeight.w700),
                     ),
@@ -102,16 +105,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _softTap();
     switch (label) {
       case 'Edit Profile':
-        Get.toNamed('/profile-summary');
+        context.push(Routes.PROFILE_SUMMARY);
         return;
       case 'Subscription':
-        Get.toNamed('/wallet');
+        context.push(Routes.WALLET);
         return;
       case 'Notifications':
-        Get.toNamed('/notifications');
+        context.push(Routes.NOTIFICATIONS);
         return;
       case 'Privacy & Security':
-        Get.toNamed('/settings');
+        context.push(Routes.SETTINGS);
         return;
       case 'Help & Support':
         await _showInfoSheet(
@@ -132,13 +135,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _softTap();
     switch (type) {
       case 'sessions':
-        Get.toNamed('/my-bookings');
+        context.push(Routes.MY_BOOKINGS);
         break;
       case 'trainers':
-        Get.toNamed('/favorite');
+        context.push(Routes.FAVORITE);
         break;
       case 'workout':
-        Get.toNamed('/all-sessions');
+        context.push(Routes.ALL_SESSIONS);
         break;
     }
   }
@@ -153,20 +156,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final profileState = ref.watch(userProfileServiceProvider);
+
     return Scaffold(
       backgroundColor: ink,
       body: Stack(
         children: [
-          Positioned.fill(child: trainerBackground()),
+          Positioned.fill(child: trainerBackground(context)),
           SafeArea(
-            bottom: false,
             child: ListView(
               physics: const BouncingScrollPhysics(),
               padding: const EdgeInsets.fromLTRB(0, 0, 0, 100),
               children: [
                 _buildHeader(),
                 const SizedBox(height: 24),
-                _buildProfileCard(),
+                _buildProfileCard(profileState),
                 const SizedBox(height: 24),
                 _buildQuickStats(),
                 const SizedBox(height: 24),
@@ -205,20 +209,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ),
           const SizedBox(width: 16),
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   'My Profile',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: text,
                     fontSize: 24,
                     fontWeight: FontWeight.w800,
                     letterSpacing: -0.5,
                   ),
                 ),
-                SizedBox(height: 2),
+                const SizedBox(height: 2),
                 Text(
                   'Manage your account',
                   style: TextStyle(color: muted, fontSize: 13),
@@ -226,7 +230,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ],
             ),
           ),
-          _iconButton(CupertinoIcons.settings, () => Get.toNamed('/settings')),
+          _iconButton(CupertinoIcons.settings, () => context.push(Routes.SETTINGS)),
         ],
       ),
     );
@@ -246,13 +250,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: stroke),
           ),
-          child: Icon(icon, color: Colors.white70, size: 20),
+          child: Icon(icon, color: text.withOpacity(0.7), size: 20),
         ),
       ),
     );
   }
 
-  Widget _buildProfileCard() {
+  Widget _buildProfileCard(UserProfileState profileState) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 20),
       decoration: BoxDecoration(
@@ -289,31 +293,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         child: SizedBox(
                           width: 72,
                           height: 72,
-                          child: Obx(
-                            () =>
-                                _profile.photoUrl.value.isNotEmpty
-                                    ? Image.network(
-                                      _profile.photoUrl.value,
-                                      fit: BoxFit.cover,
-                                      errorBuilder:
-                                          (_, __, ___) => Container(
-                                            color: raised,
-                                            child: const Icon(
-                                              CupertinoIcons.person_fill,
-                                              color: muted,
-                                              size: 32,
-                                            ),
-                                          ),
-                                    )
-                                    : Container(
-                                      color: raised,
-                                      child: const Icon(
-                                        CupertinoIcons.person_fill,
-                                        color: muted,
-                                        size: 32,
-                                      ),
-                                    ),
-                          ),
+                          child: profileState.photoUrl.isNotEmpty
+                              ? CachedNetworkImage(
+                                  imageUrl: profileState.photoUrl,
+                                  fit: BoxFit.cover,
+                                  placeholder: (context, url) => InitialsAvatar(
+                                    name: profileState.name,
+                                    size: 72,
+                                    fontSize: 26,
+                                    borderRadius: 19,
+                                  ),
+                                  errorWidget: (context, url, error) => InitialsAvatar(
+                                    name: profileState.name,
+                                    size: 72,
+                                    fontSize: 26,
+                                    borderRadius: 19,
+                                  ),
+                                )
+                              : InitialsAvatar(
+                                  name: profileState.name,
+                                  size: 72,
+                                  fontSize: 26,
+                                  borderRadius: 19,
+                                ),
                         ),
                       ),
                     ),
@@ -333,7 +335,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             color: neon,
                             shape: BoxShape.circle,
                           ),
-                          child: const Icon(
+                          child: Icon(
                             CupertinoIcons.checkmark_alt,
                             color: ink,
                             size: 12,
@@ -346,63 +348,61 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const SizedBox(width: 16),
                 // Info
                 Expanded(
-                  child: Obx(
-                    () => Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _profile.name.value,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                          ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        profileState.name,
+                        style: TextStyle(
+                          color: text,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          _profile.email.value.isNotEmpty
-                              ? _profile.email.value
-                              : 'No email linked',
-                          style: TextStyle(color: muted, fontSize: 12),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        profileState.email.isNotEmpty
+                            ? profileState.email
+                            : 'No email linked',
+                        style: TextStyle(color: muted, fontSize: 12),
+                      ),
+                      const SizedBox(height: 10),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 5,
                         ),
-                        const SizedBox(height: 10),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 5,
-                          ),
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [
-                                neon.withOpacity(0.15),
-                                neon.withOpacity(0.05),
-                              ],
-                            ),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: neon.withOpacity(0.3)),
-                          ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                CupertinoIcons.rosette,
-                                color: neon,
-                                size: 14,
-                              ),
-                              SizedBox(width: 5),
-                              Text(
-                                'Premium',
-                                style: TextStyle(
-                                  color: neon,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              neon.withOpacity(0.15),
+                              neon.withOpacity(0.05),
                             ],
                           ),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: neon.withOpacity(0.3)),
                         ),
-                      ],
-                    ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              CupertinoIcons.rosette,
+                              color: neon,
+                              size: 14,
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              'Premium',
+                              style: TextStyle(
+                                color: neon,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 Icon(CupertinoIcons.pencil, color: muted, size: 20),
@@ -511,10 +511,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
+              Text(
                 'My Goals',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: text,
                   fontSize: 17,
                   fontWeight: FontWeight.w800,
                 ),
@@ -530,7 +530,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     color: neon.withOpacity(0.12),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Text(
+                  child: Text(
                     'View All',
                     style: TextStyle(
                       color: neon,
@@ -617,7 +617,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 child: Text(
                   title,
                   style: TextStyle(
-                    color: Colors.white,
+                    color: text,
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
                   ),
@@ -650,12 +650,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Padding(
-            padding: EdgeInsets.only(left: 4, bottom: 14),
+          Padding(
+            padding: const EdgeInsets.only(left: 4, bottom: 14),
             child: Text(
               'Settings',
               style: TextStyle(
-                color: Colors.white,
+                color: text,
                 fontSize: 17,
                 fontWeight: FontWeight.w800,
               ),
@@ -673,15 +673,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
       builder:
           (_) => AlertDialog(
             backgroundColor: card,
-            title: const Text('Log Out', style: TextStyle(color: Colors.white)),
-            content: const Text(
+            title: Text('Log Out', style: TextStyle(color: text)),
+            content: Text(
               'Are you sure you want to log out?',
               style: TextStyle(color: muted),
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context, false),
-                child: const Text('Cancel', style: TextStyle(color: muted)),
+                child: Text('Cancel', style: TextStyle(color: muted)),
               ),
               TextButton(
                 onPressed: () => Navigator.pop(context, true),
@@ -695,7 +695,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
     if (confirmed != true) return;
     await FirebaseAuth.instance.signOut();
-    Get.offAllNamed('/login');
+    if (context.mounted) {
+      context.go(Routes.LOGIN);
+    }
   }
 
   Widget _menuTile(Map<String, dynamic> item, int index) {
@@ -754,7 +756,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         Text(
                           item['label'] as String,
                           style: TextStyle(
-                            color: isDanger ? coral : Colors.white,
+                            color: isDanger ? coral : text,
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
                           ),
@@ -810,14 +812,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
       'icon': CupertinoIcons.shield,
       'label': 'Privacy & Security',
       'subtitle': null,
-      'color': Colors.white54,
+      'color': lilac,
       'danger': false,
     },
     {
       'icon': CupertinoIcons.question_circle,
       'label': 'Help & Support',
       'subtitle': null,
-      'color': Colors.white54,
+      'color': sky,
       'danger': false,
     },
     {

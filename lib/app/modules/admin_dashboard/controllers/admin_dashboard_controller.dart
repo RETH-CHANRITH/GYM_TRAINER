@@ -2,15 +2,71 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:get/get.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../routes/app_pages.dart';
+import '../../../routes/app_router.dart';
+import '../../../providers/rx_compat.dart';
 
-class AdminDashboardController extends GetxController {
-  AdminDashboardController({FirebaseFirestore? firestore})
-    : _firestore = firestore ?? FirebaseFirestore.instance;
-
+class AdminDashboardController extends ChangeNotifier {
+  final Ref ref;
   final FirebaseFirestore _firestore;
+
+  AdminDashboardController({required this.ref, FirebaseFirestore? firestore})
+    : _firestore = firestore ?? FirebaseFirestore.instance {
+    
+    displayName.addListener(notifyListeners);
+    isLoading.addListener(notifyListeners);
+    isActionLoading.addListener(notifyListeners);
+    selectedPanel.addListener(notifyListeners);
+    currentTab.addListener(notifyListeners);
+    trainerApplications.addListener(notifyListeners);
+    users.addListener(notifyListeners);
+    bookings.addListener(notifyListeners);
+    transactions.addListener(notifyListeners);
+    supportTickets.addListener(notifyListeners);
+    disputes.addListener(notifyListeners);
+    refunds.addListener(notifyListeners);
+    payouts.addListener(notifyListeners);
+    gdprRequests.addListener(notifyListeners);
+    auditLogs.addListener(notifyListeners);
+    activeTrainersCount.addListener(notifyListeners);
+    pendingTrainerApplicationsCount.addListener(notifyListeners);
+    activeUsersCount.addListener(notifyListeners);
+    openBookingsCount.addListener(notifyListeners);
+    supportOpenCount.addListener(notifyListeners);
+    disputeOpenCount.addListener(notifyListeners);
+    payoutPendingCount.addListener(notifyListeners);
+    refundPendingCount.addListener(notifyListeners);
+    gdprPendingCount.addListener(notifyListeners);
+    monthlyRevenue.addListener(notifyListeners);
+    recentActivity.addListener(notifyListeners);
+    searchUsersQuery.addListener(notifyListeners);
+    filterUsersStatus.addListener(notifyListeners);
+    sortUsersBy.addListener(notifyListeners);
+    filterBookingsStatus.addListener(notifyListeners);
+    filterBookingsTrainerId.addListener(notifyListeners);
+    filterBookingsDateFrom.addListener(notifyListeners);
+    filterBookingsDateTo.addListener(notifyListeners);
+
+    final user = FirebaseAuth.instance.currentUser;
+    final name = user?.displayName?.trim();
+    if (name != null && name.isNotEmpty) {
+      displayName.value = name;
+    }
+    _listenCollections();
+  }
+
+  @override
+  void dispose() {
+    _kpiRecomputeDebounce?.cancel();
+    _activityRecomputeDebounce?.cancel();
+    for (final sub in _subscriptions) {
+      sub.cancel();
+    }
+    super.dispose();
+  }
+
   final displayName = 'Admin'.obs;
   final isLoading = true.obs;
   final isActionLoading = false.obs;
@@ -29,6 +85,7 @@ class AdminDashboardController extends GetxController {
   final payouts = <Map<String, dynamic>>[].obs;
   final gdprRequests = <Map<String, dynamic>>[].obs;
   final auditLogs = <Map<String, dynamic>>[].obs;
+  final Set<String> _creatingRefundIds = {};
 
   final activeTrainersCount = 0.obs;
   final pendingTrainerApplicationsCount = 0.obs;
@@ -43,10 +100,9 @@ class AdminDashboardController extends GetxController {
 
   final recentActivity = <Map<String, String>>[].obs;
 
-  // ─── FILTER/SEARCH STATE ──────────────────────────────────────────────────
   final searchUsersQuery = ''.obs;
-  final filterUsersStatus = 'active'.obs; // 'active', 'suspended', 'pending'
-  final sortUsersBy = 'createdAt'.obs; // 'createdAt', 'name', 'email'
+  final filterUsersStatus = 'active'.obs;
+  final sortUsersBy = 'createdAt'.obs;
   final filterBookingsStatus = 'pending'.obs;
   final filterBookingsTrainerId = ''.obs;
   final filterBookingsDateFrom = Rx<DateTime?>(null);
@@ -56,27 +112,6 @@ class AdminDashboardController extends GetxController {
   static const int _dashboardCollectionLimit = 120;
   Timer? _kpiRecomputeDebounce;
   Timer? _activityRecomputeDebounce;
-
-  @override
-  void onInit() {
-    super.onInit();
-    final user = FirebaseAuth.instance.currentUser;
-    final name = user?.displayName?.trim();
-    if (name != null && name.isNotEmpty) {
-      displayName.value = name;
-    }
-    _listenCollections();
-  }
-
-  @override
-  void onClose() {
-    _kpiRecomputeDebounce?.cancel();
-    _activityRecomputeDebounce?.cancel();
-    for (final sub in _subscriptions) {
-      sub.cancel();
-    }
-    super.onClose();
-  }
 
   void setPanel(int index) {
     selectedPanel.value = index;
@@ -129,6 +164,7 @@ class AdminDashboardController extends GetxController {
             );
             _scheduleKpiRecompute();
             _scheduleRecentActivityRecompute();
+            _checkAndCreateMissingRefunds();
           }, onError: (_) {}),
     );
 
@@ -195,6 +231,7 @@ class AdminDashboardController extends GetxController {
               }),
             );
             _scheduleKpiRecompute();
+            _checkAndCreateMissingRefunds();
           }, onError: (_) {}),
     );
 
@@ -344,7 +381,10 @@ class AdminDashboardController extends GetxController {
       for (final tx in transactions) {
         final status = (tx['status'] ?? '').toString().toLowerCase();
         final type = (tx['type'] ?? '').toString().toLowerCase();
-        if (status != 'success' && status != 'completed' && status != 'paid') {
+        if (status.isNotEmpty &&
+            status != 'success' &&
+            status != 'completed' &&
+            status != 'paid') {
           continue;
         }
         if (type != 'payment' && type != 'credit') continue;
@@ -357,12 +397,25 @@ class AdminDashboardController extends GetxController {
     } else {
       for (final booking in bookings) {
         final status = (booking['status'] ?? '').toString().toLowerCase();
-        if (status != 'completed' && booking['paid'] != true) continue;
+        if (status == 'cancelled' || status == 'rejected') continue;
+
+        final paymentStatus = (booking['paymentStatus'] ?? '').toString().toLowerCase();
+        final paid = booking['paid'] == true;
+        if (paymentStatus == 'unpaid') continue;
+        if (paymentStatus.isEmpty && !paid && _toDouble(booking['amountPaid']) <= 0) continue;
+
+        double amount = _toDouble(booking['amountPaid']);
+        if (amount <= 0) {
+          if (paid || (paymentStatus.isEmpty && status == 'completed')) {
+            amount = _toDouble(booking['price'] ?? booking['amount']);
+          }
+        }
+        if (amount <= 0) continue;
 
         final createdAt = _toDateTime(booking['createdAt']);
         if (createdAt != null && createdAt.isBefore(startOfMonth)) continue;
 
-        revenue += _toDouble(booking['price'] ?? booking['amount']);
+        revenue += amount;
       }
     }
     monthlyRevenue.value = revenue;
@@ -438,6 +491,69 @@ class AdminDashboardController extends GetxController {
     recentActivity.assignAll(activity.take(5));
   }
 
+  void _checkAndCreateMissingRefunds() {
+    if (bookings.isEmpty) return;
+
+    final refundBookingIds = refunds
+        .map((r) => r['bookingId']?.toString() ?? '')
+        .where((id) => id.isNotEmpty)
+        .toSet();
+
+    for (final booking in bookings) {
+      final status = (booking['status'] ?? '').toString().toLowerCase();
+      if (status == 'cancelled') {
+        final bookingId = booking['id']?.toString() ?? '';
+        if (bookingId.isNotEmpty &&
+            !refundBookingIds.contains(bookingId) &&
+            !_creatingRefundIds.contains(bookingId)) {
+          _creatingRefundIds.add(bookingId);
+          _createMissingRefund(booking);
+        }
+      }
+    }
+  }
+
+  Future<void> _createMissingRefund(Map<String, dynamic> booking) async {
+    final bookingId = booking['id']?.toString() ?? '';
+    if (bookingId.isEmpty) return;
+
+    final paymentStatus = (booking['paymentStatus'] ?? '').toString().toLowerCase();
+    final paid = booking['paid'] == true ||
+                 paymentStatus == 'fully_paid' ||
+                 paymentStatus == 'partially_paid';
+
+    double amountPaid = (booking['amountPaid'] as num?)?.toDouble() ?? 0.0;
+    if (amountPaid == 0.0 && paid) {
+      amountPaid = (booking['price'] as num?)?.toDouble() ?? 0.0;
+    }
+    final userId = booking['userId']?.toString() ?? '';
+    final trainerId = booking['trainerId']?.toString() ?? '';
+    final trainerName = (booking['trainer'] ?? booking['trainerName'] ?? 'Trainer').toString();
+    final clientName = (booking['clientName'] ?? booking['userName'] ?? 'Client').toString();
+
+    if (userId.isNotEmpty && amountPaid > 0 && paid) {
+      try {
+        await _firestore.collection('refunds').add({
+          'bookingId': bookingId,
+          'userId': userId,
+          'clientName': clientName,
+          'trainerId': trainerId,
+          'trainerName': trainerName,
+          'amount': amountPaid,
+          'status': 'pending',
+          'createdAt': FieldValue.serverTimestamp(),
+          'sessionDate': (booking['date'] ?? '').toString(),
+          'sessionTime': (booking['time'] ?? '').toString(),
+          'sessionType': (booking['type'] ?? booking['sessionType'] ?? 'Session').toString(),
+        });
+        debugPrint('Auto-created missing refund for booking $bookingId');
+      } catch (e) {
+        _creatingRefundIds.remove(bookingId);
+        debugPrint('Error creating missing refund: $e');
+      }
+    }
+  }
+
   Future<void> resolveSupportTicket(Map<String, dynamic> ticket) async {
     final ticketId = ticket['id']?.toString();
     if (ticketId == null || ticketId.isEmpty) return;
@@ -454,7 +570,7 @@ class AdminDashboardController extends GetxController {
         }, SetOptions(merge: true));
       },
       onSuccess: () {
-        Get.snackbar('Ticket resolved', 'Support ticket marked as resolved.');
+        showSnackbar('Ticket resolved', 'Support ticket marked as resolved.');
       },
     );
   }
@@ -475,7 +591,7 @@ class AdminDashboardController extends GetxController {
         }, SetOptions(merge: true));
       },
       onSuccess: () {
-        Get.snackbar('Ticket updated', 'Support ticket moved to in-progress.');
+        showSnackbar('Ticket updated', 'Support ticket moved to in-progress.');
       },
     );
   }
@@ -496,7 +612,7 @@ class AdminDashboardController extends GetxController {
         }, SetOptions(merge: true));
       },
       onSuccess: () {
-        Get.snackbar('Dispute assigned', 'Dispute assigned to your queue.');
+        showSnackbar('Dispute assigned', 'Dispute assigned to your queue.');
       },
     );
   }
@@ -517,7 +633,7 @@ class AdminDashboardController extends GetxController {
         }, SetOptions(merge: true));
       },
       onSuccess: () {
-        Get.snackbar('Dispute resolved', 'Dispute marked as resolved.');
+        showSnackbar('Dispute resolved', 'Dispute marked as resolved.');
       },
     );
   }
@@ -547,14 +663,72 @@ class AdminDashboardController extends GetxController {
       targetId: refundId,
       before: refund,
       run: () async {
-        await _firestore.collection('refunds').doc(refundId).set({
+        final batch = _firestore.batch();
+        batch.set(_firestore.collection('refunds').doc(refundId), {
           'status': status,
           'updatedBy': FirebaseAuth.instance.currentUser?.uid,
           'updatedAt': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
+
+        final currentStatus = (refund['status'] ?? '').toString().toLowerCase();
+        final isAlreadyCredited = currentStatus == 'approved' || currentStatus == 'processed';
+
+        if ((status == 'approved' || status == 'processed') && !isAlreadyCredited) {
+          final userId = refund['userId']?.toString() ?? '';
+          final amount = (refund['amount'] as num?)?.toDouble() ?? 0.0;
+          if (userId.isNotEmpty && amount > 0) {
+            final userDoc = await _firestore.collection('users').doc(userId).get();
+            if (userDoc.exists) {
+              final userData = userDoc.data() ?? {};
+              final currentBalance = (userData['walletBalance'] as num?)?.toDouble() ?? 0.0;
+              final newBalance = currentBalance + amount;
+              
+              batch.update(_firestore.collection('users').doc(userId), {
+                'walletBalance': newBalance,
+                'updatedAt': FieldValue.serverTimestamp(),
+              });
+
+              final trainerName = refund['trainerName']?.toString() ?? 'Trainer';
+              batch.set(_firestore.collection('transactions').doc(), {
+                'userId': userId,
+                'title': 'Refund — $trainerName Session',
+                'amount': amount,
+                'type': 'credit',
+                'date': _today(),
+                'createdAt': FieldValue.serverTimestamp(),
+              });
+
+              batch.set(_firestore.collection('notifications').doc(userId).collection('items').doc(), {
+                'title': 'Refund Processed',
+                'body': 'Your refund of \$${amount.toStringAsFixed(0)} for session with $trainerName has been credited to your wallet.',
+                'type': 'wallet',
+                'color': 'sky',
+                'icon': 'payment',
+                'read': false,
+                'createdAt': FieldValue.serverTimestamp(),
+              });
+
+              final trainerId = refund['trainerId']?.toString() ?? '';
+              final clientName = refund['clientName']?.toString() ?? 'Client';
+              if (trainerId.isNotEmpty) {
+                batch.set(_firestore.collection('notifications').doc(trainerId).collection('items').doc(), {
+                  'title': 'Refund Approved',
+                  'body': 'Refund of \$${amount.toStringAsFixed(0)} for session with $clientName has been processed. This amount was cut from your earnings.',
+                  'type': 'refund',
+                  'color': 'red',
+                  'icon': 'payment',
+                  'read': false,
+                  'createdAt': FieldValue.serverTimestamp(),
+                });
+              }
+            }
+          }
+        }
+
+        await batch.commit();
       },
       onSuccess: () {
-        Get.snackbar('Refund updated', message);
+        showSnackbar('Refund updated', message);
       },
     );
   }
@@ -579,7 +753,7 @@ class AdminDashboardController extends GetxController {
         }, SetOptions(merge: true));
       },
       onSuccess: () {
-        Get.snackbar(
+        showSnackbar(
           suspend ? 'User suspended' : 'User reactivated',
           suspend
               ? 'Account has been suspended.'
@@ -614,7 +788,7 @@ class AdminDashboardController extends GetxController {
         }, SetOptions(merge: true));
       },
       onSuccess: () {
-        Get.snackbar('Payout updated', message);
+        showSnackbar('Payout updated', message);
       },
     );
   }
@@ -653,7 +827,7 @@ class AdminDashboardController extends GetxController {
         }, SetOptions(merge: true));
       },
       onSuccess: () {
-        Get.snackbar('GDPR request updated', message);
+        showSnackbar('GDPR request updated', message);
       },
     );
   }
@@ -677,17 +851,18 @@ class AdminDashboardController extends GetxController {
         status: 'success',
       );
       onSuccess?.call();
-    } catch (_) {
+    } catch (e, stack) {
+      debugPrint('❌ Guarded action failed: $e\n$stack');
       await _writeAuditLog(
         action: action,
         targetId: targetId,
         before: before,
-        after: {'result': 'failed'},
+        after: {'result': 'failed', 'error': e.toString()},
         status: 'failed',
       );
-      Get.snackbar(
+      showSnackbar(
         'Action failed',
-        'Unable to complete this action. Please check connectivity and retry.',
+        'Unable to complete this action: $e',
       );
     } finally {
       isActionLoading.value = false;
@@ -741,59 +916,49 @@ class AdminDashboardController extends GetxController {
   Future<void> suspendUser(String userId, String reason) async {
     if (userId.isEmpty) return;
 
-    isActionLoading.value = true;
-    try {
-      final userList = users.where((u) => u['id'] == userId).toList();
-      if (userList.isEmpty) return;
+    final userList = users.where((u) => u['id'] == userId).toList();
+    if (userList.isEmpty) return;
 
-      final user = userList.first;
-      await _guardedAction(
-        action: 'user.suspend',
-        targetId: userId,
-        before: user,
-        run: () async {
-          await _firestore.collection('users').doc(userId).set({
-            'accountStatus': 'suspended',
-            'suspensionReason': reason,
-            'updatedAt': FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true));
-        },
-        onSuccess: () {
-          Get.snackbar('User suspended', 'Account has been suspended.');
-        },
-      );
-    } finally {
-      isActionLoading.value = false;
-    }
+    final user = userList.first;
+    await _guardedAction(
+      action: 'user.suspend',
+      targetId: userId,
+      before: user,
+      run: () async {
+        await _firestore.collection('users').doc(userId).set({
+          'accountStatus': 'suspended',
+          'suspensionReason': reason,
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      },
+      onSuccess: () {
+        showSnackbar('User suspended', 'Account has been suspended.');
+      },
+    );
   }
 
   /// Reactivate a user by their ID
   Future<void> reactivateUser(String userId) async {
     if (userId.isEmpty) return;
 
-    isActionLoading.value = true;
-    try {
-      final userList = users.where((u) => u['id'] == userId).toList();
-      if (userList.isEmpty) return;
+    final userList = users.where((u) => u['id'] == userId).toList();
+    if (userList.isEmpty) return;
 
-      final user = userList.first;
-      await _guardedAction(
-        action: 'user.reactivate',
-        targetId: userId,
-        before: user,
-        run: () async {
-          await _firestore.collection('users').doc(userId).set({
-            'accountStatus': 'active',
-            'updatedAt': FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true));
-        },
-        onSuccess: () {
-          Get.snackbar('User reactivated', 'Account access restored.');
-        },
-      );
-    } finally {
-      isActionLoading.value = false;
-    }
+    final user = userList.first;
+    await _guardedAction(
+      action: 'user.reactivate',
+      targetId: userId,
+      before: user,
+      run: () async {
+        await _firestore.collection('users').doc(userId).set({
+          'accountStatus': 'active',
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      },
+      onSuccess: () {
+        showSnackbar('User reactivated', 'Account access restored.');
+      },
+    );
   }
 
   /// Load bookings (real-time listeners handle this)
@@ -805,31 +970,97 @@ class AdminDashboardController extends GetxController {
   Future<void> cancelBooking(String bookingId, String reason) async {
     if (bookingId.isEmpty) return;
 
-    isActionLoading.value = true;
-    try {
-      final bookingList = bookings.where((b) => b['id'] == bookingId).toList();
-      if (bookingList.isEmpty) return;
+    final bookingList = bookings.where((b) => b['id'] == bookingId).toList();
+    if (bookingList.isEmpty) return;
 
-      final booking = bookingList.first;
-      await _guardedAction(
-        action: 'booking.cancel',
-        targetId: bookingId,
-        before: booking,
-        run: () async {
-          await _firestore.collection('bookings').doc(bookingId).set({
-            'status': 'cancelled',
-            'cancellationReason': reason,
-            'cancelledAt': FieldValue.serverTimestamp(),
-            'cancelledBy': FirebaseAuth.instance.currentUser?.uid,
-          }, SetOptions(merge: true));
-        },
-        onSuccess: () {
-          Get.snackbar('Booking cancelled', 'Booking has been cancelled.');
-        },
-      );
-    } finally {
-      isActionLoading.value = false;
-    }
+    final booking = bookingList.first;
+    await _guardedAction(
+      action: 'booking.cancel',
+      targetId: bookingId,
+      before: booking,
+      run: () async {
+        await _firestore.collection('bookings').doc(bookingId).set({
+          'status': 'cancelled',
+          'cancellationReason': reason,
+          'cancelledAt': FieldValue.serverTimestamp(),
+          'cancelledBy': FirebaseAuth.instance.currentUser?.uid,
+        }, SetOptions(merge: true));
+
+        final paymentStatus = (booking['paymentStatus'] ?? '').toString().toLowerCase();
+        final paid = booking['paid'] == true ||
+                     paymentStatus == 'fully_paid' ||
+                     paymentStatus == 'partially_paid';
+
+        double amountPaid = (booking['amountPaid'] as num?)?.toDouble() ?? 0.0;
+        if (amountPaid == 0.0 && paid) {
+          amountPaid = (booking['price'] as num?)?.toDouble() ?? 0.0;
+        }
+        final userId = booking['userId']?.toString() ?? '';
+        final trainerId = booking['trainerId']?.toString() ?? '';
+        final trainerName = (booking['trainer'] ?? booking['trainerName'] ?? 'Trainer').toString();
+        final clientName = (booking['clientName'] ?? booking['userName'] ?? 'Client').toString();
+
+        if (userId.isNotEmpty && amountPaid > 0 && paid) {
+          // Refund logic if booking is paid
+          final refundDoc = await _firestore.collection('refunds').where('bookingId', isEqualTo: bookingId).get();
+          if (refundDoc.docs.isEmpty) {
+            await _firestore.collection('refunds').add({
+              'bookingId': bookingId,
+              'userId': userId,
+              'clientName': clientName,
+              'trainerId': trainerId,
+              'trainerName': trainerName,
+              'amount': amountPaid,
+              'status': 'pending',
+              'createdAt': FieldValue.serverTimestamp(),
+              'sessionDate': (booking['date'] ?? '').toString(),
+              'sessionTime': (booking['time'] ?? '').toString(),
+              'sessionType': (booking['type'] ?? booking['sessionType'] ?? 'Session').toString(),
+            });
+          }
+        }
+
+        final dateStr = (booking['date'] ?? '').toString();
+        final timeStr = (booking['time'] ?? '').toString();
+
+        // Notify Trainer
+        if (trainerId.isNotEmpty) {
+          await _firestore
+              .collection('notifications')
+              .doc(trainerId)
+              .collection('items')
+              .add({
+            'title': 'Booking Cancelled by Admin',
+            'body': 'Your session with $clientName on $dateStr at $timeStr has been cancelled by Admin.',
+            'type': 'booking',
+            'color': 'coral',
+            'icon': 'calendar',
+            'read': false,
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+        }
+
+        // Notify Client
+        if (userId.isNotEmpty) {
+          await _firestore
+              .collection('notifications')
+              .doc(userId)
+              .collection('items')
+              .add({
+            'title': 'Booking Cancelled by Admin',
+            'body': 'Your session with $trainerName on $dateStr at $timeStr has been cancelled by Admin. \$${amountPaid.toStringAsFixed(0)} has been requested for refund.',
+            'type': 'booking',
+            'color': 'coral',
+            'icon': 'calendar',
+            'read': false,
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+        }
+      },
+      onSuccess: () {
+        showSnackbar('Booking cancelled', 'Booking has been cancelled.');
+      },
+    );
   }
 
   /// Reassign a booking to a different trainer
@@ -843,9 +1074,9 @@ class AdminDashboardController extends GetxController {
         'reassignedAt': FieldValue.serverTimestamp(),
         'reassignedBy': FirebaseAuth.instance.currentUser?.uid,
       }, SetOptions(merge: true));
-      Get.snackbar('Reassigned', 'Booking reassigned to trainer.');
+      showSnackbar('Reassigned', 'Booking reassigned to trainer.');
     } catch (_) {
-      Get.snackbar('Error', 'Unable to reassign booking.');
+      showSnackbar('Error', 'Unable to reassign booking.');
     } finally {
       isActionLoading.value = false;
     }
@@ -860,68 +1091,149 @@ class AdminDashboardController extends GetxController {
   Future<void> approveTrainerApplication(String appId, String userId) async {
     if (appId.isEmpty || userId.isEmpty) return;
 
-    isActionLoading.value = true;
-    try {
-      final appList =
-          trainerApplications.where((a) => a['id'] == appId).toList();
-      if (appList.isEmpty) return;
+    final appList =
+        trainerApplications.where((a) => a['id'] == appId).toList();
+    if (appList.isEmpty) return;
 
-      final app = appList.first;
-      await _guardedAction(
-        action: 'trainer_application.approve',
-        targetId: appId,
-        before: app,
-        run: () async {
-          // Update application status
-          await _firestore.collection('trainerApplications').doc(appId).set({
-            'status': 'approved',
-            'reviewedAt': FieldValue.serverTimestamp(),
-            'reviewedBy': FirebaseAuth.instance.currentUser?.uid,
-          }, SetOptions(merge: true));
+    final app = appList.first;
+    await _guardedAction(
+      action: 'trainer_application.approve',
+      targetId: appId,
+      before: app,
+      run: () async {
+        // Update application status
+        await _firestore.collection('trainerApplications').doc(appId).set({
+          'status': 'approved',
+          'reviewedAt': FieldValue.serverTimestamp(),
+          'reviewedBy': FirebaseAuth.instance.currentUser?.uid,
+        }, SetOptions(merge: true));
 
-          // Promote user to trainer role
-          await _firestore.collection('users').doc(userId).set({
-            'role': 'trainer',
-            'trainerApproved': true,
-            'accountStatus': 'active',
-          }, SetOptions(merge: true));
-        },
-        onSuccess: () {
-          Get.snackbar('Approved', 'Trainer application approved.');
-        },
-      );
-    } finally {
-      isActionLoading.value = false;
-    }
+        // Promote user to trainer role
+        await _firestore.collection('users').doc(userId).set({
+          'role': 'trainer',
+          'trainerApproved': true,
+          'accountStatus': 'active',
+        }, SetOptions(merge: true));
+      },
+      onSuccess: () {
+        showSnackbar('Approved', 'Trainer application approved.');
+      },
+    );
   }
 
   /// Reject a trainer application by its ID
   Future<void> rejectTrainerApplication(String appId, String notes) async {
     if (appId.isEmpty) return;
 
+    final appList =
+        trainerApplications.where((a) => a['id'] == appId).toList();
+    if (appList.isEmpty) return;
+
+    final app = appList.first;
+    await _guardedAction(
+      action: 'trainer_application.reject',
+      targetId: appId,
+      before: app,
+      run: () async {
+        await _firestore.collection('trainerApplications').doc(appId).set({
+          'status': 'rejected',
+          'rejectionNotes': notes,
+          'reviewedAt': FieldValue.serverTimestamp(),
+          'reviewedBy': FirebaseAuth.instance.currentUser?.uid,
+        }, SetOptions(merge: true));
+      },
+      onSuccess: () {
+        showSnackbar('Rejected', 'Trainer application rejected.');
+      },
+    );
+  }
+
+  /// Dynamic user role modification method
+  Future<void> changeUserRole(String userId, String newRole) async {
+    if (userId.isEmpty || newRole.isEmpty) return;
+
+    final userList = users.where((u) => u['id'] == userId).toList();
+    if (userList.isEmpty) return;
+
+    final user = userList.first;
+    final cleanRole = newRole.toLowerCase();
+
+    await _guardedAction(
+      action: 'user.change_role',
+      targetId: userId,
+      before: user,
+      run: () async {
+        await _firestore.collection('users').doc(userId).set({
+          'role': cleanRole,
+          'trainerApproved': cleanRole == 'trainer',
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      },
+      onSuccess: () {
+        showSnackbar('Role updated', 'User role updated to ${cleanRole.toUpperCase()}.');
+      },
+    );
+  }
+
+  /// Publish special platform promotion campaign
+  Future<void> publishCampaignPromotion({
+    required String title,
+    required int discount,
+    required String label,
+  }) async {
     isActionLoading.value = true;
     try {
-      final appList =
-          trainerApplications.where((a) => a['id'] == appId).toList();
-      if (appList.isEmpty) return;
+      await _firestore.collection('promotions').doc('activeCampaign').set({
+        'title': title,
+        'discount': '$discount\n%',
+        'label': label.toUpperCase(),
+        'isActive': true,
+      }, SetOptions(merge: true));
 
-      final app = appList.first;
-      await _guardedAction(
-        action: 'trainer_application.reject',
-        targetId: appId,
-        before: app,
-        run: () async {
-          await _firestore.collection('trainerApplications').doc(appId).set({
-            'status': 'rejected',
-            'rejectionNotes': notes,
-            'reviewedAt': FieldValue.serverTimestamp(),
-            'reviewedBy': FirebaseAuth.instance.currentUser?.uid,
-          }, SetOptions(merge: true));
-        },
-        onSuccess: () {
-          Get.snackbar('Rejected', 'Trainer application rejected.');
-        },
-      );
+      final userSnap = await _firestore.collection('users').get();
+      final clientUsers = userSnap.docs.where((d) {
+        final role = (d.data()['role'] ?? 'user').toString().toLowerCase();
+        return role == 'user';
+      }).toList();
+      final batch = _firestore.batch();
+
+      for (final client in clientUsers) {
+        final clientUid = client.id;
+        if (clientUid.isEmpty) continue;
+
+        final ref = _firestore
+            .collection('notifications')
+            .doc(clientUid)
+            .collection('items')
+            .doc();
+
+        batch.set(ref, {
+          'title': 'New Special Promotion!',
+          'body': 'A new platform promotion has been launched: $discount% off! Tap here to claim it now.',
+          'type': 'promo',
+          'color': 'neon',
+          'icon': 'promo',
+          'read': false,
+          'createdAt': FieldValue.serverTimestamp(),
+          'senderId': 'admin',
+          'senderName': 'Admin Platform',
+          'senderPhotoUrl': '',
+          'promoDiscountValue': discount,
+        });
+      }
+
+      await batch.commit();
+
+      await _firestore.collection('auditLogs').add({
+        'action': 'publish_campaign',
+        'details': 'Published campaign: "$title" with $discount% discount',
+        'performedBy': FirebaseAuth.instance.currentUser?.uid ?? 'admin',
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      showSnackbar('Campaign published', 'All clients notified successfully.');
+    } catch (e) {
+      showSnackbar('Error', 'Failed to publish campaign.');
     } finally {
       isActionLoading.value = false;
     }
@@ -938,9 +1250,9 @@ class AdminDashboardController extends GetxController {
         'paidAt': FieldValue.serverTimestamp(),
         'markedPaidBy': FirebaseAuth.instance.currentUser?.uid,
       }, SetOptions(merge: true));
-      Get.snackbar('Marked paid', 'Payout marked as paid.');
+      showSnackbar('Marked paid', 'Payout marked as paid.');
     } catch (_) {
-      Get.snackbar('Error', 'Unable to mark payout as paid.');
+      showSnackbar('Error', 'Unable to mark payout as paid.');
     } finally {
       isActionLoading.value = false;
     }
@@ -971,9 +1283,9 @@ class AdminDashboardController extends GetxController {
         'approvedAt': FieldValue.serverTimestamp(),
         'approvedBy': FirebaseAuth.instance.currentUser?.uid,
       }, SetOptions(merge: true));
-      Get.snackbar('Approved', 'Payout approved successfully.');
+      showSnackbar('Approved', 'Payout approved successfully.');
     } catch (_) {
-      Get.snackbar('Error', 'Unable to approve payout.');
+      showSnackbar('Error', 'Unable to approve payout.');
     } finally {
       isActionLoading.value = false;
     }
@@ -986,8 +1298,18 @@ class AdminDashboardController extends GetxController {
   RxBool get loadingBookings => isActionLoading;
   RxBool get loadingFinance => isActionLoading;
 
+  String _today() {
+    final now = DateTime.now();
+    final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return '${months[now.month - 1]} ${now.day}, ${now.year}';
+  }
+
   Future<void> logout() async {
     await FirebaseAuth.instance.signOut();
-    Get.offAllNamed(Routes.LOGIN);
+    ref.read(routerProvider).go(Routes.LOGIN);
   }
 }
+
+final adminDashboardProvider = ChangeNotifierProvider((ref) {
+  return AdminDashboardController(ref: ref);
+});

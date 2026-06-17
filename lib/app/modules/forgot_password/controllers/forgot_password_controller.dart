@@ -1,129 +1,174 @@
+import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import '../../../routes/app_pages.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import '../../../routes/app_router.dart' show routerProvider, Routes;
+import '../../../../infrastructure/api/api_client.dart';
 
-class ForgotPasswordController extends GetxController {
-  final emailController = TextEditingController();
-  final phoneController = TextEditingController();
-  final otpController = TextEditingController();
-  final newPasswordController = TextEditingController();
-  final confirmPasswordController = TextEditingController();
+class ForgotPasswordState {
+  final int currentStep;
+  final String? contactMethod;
+  final bool isLoading;
+  final bool isOtpSent;
+  final bool showPassword;
+  final bool showConfirmPassword;
+  final int otpResendCountdown;
+  final String? resetToken;
 
-  final currentStep =
-      0.obs; // 0: Choose method, 1: Enter email/phone, 2: OTP, 3: Reset password
-  final contactMethod = Rx<String?>(null); // 'email' or 'phone'
-  final isLoading = false.obs;
-  final isOtpSent = false.obs;
-  final showPassword = false.obs;
-  final showConfirmPassword = false.obs;
-  final otpResendCountdown = 0.obs;
+  ForgotPasswordState({
+    this.currentStep = 0,
+    this.contactMethod,
+    this.isLoading = false,
+    this.isOtpSent = false,
+    this.showPassword = false,
+    this.showConfirmPassword = false,
+    this.otpResendCountdown = 0,
+    this.resetToken,
+  });
 
+  ForgotPasswordState copyWith({
+    int? currentStep,
+    String? contactMethod,
+    bool? isLoading,
+    bool? isOtpSent,
+    bool? showPassword,
+    bool? showConfirmPassword,
+    int? otpResendCountdown,
+    String? resetToken,
+  }) {
+    return ForgotPasswordState(
+      currentStep: currentStep ?? this.currentStep,
+      contactMethod: contactMethod ?? this.contactMethod,
+      isLoading: isLoading ?? this.isLoading,
+      isOtpSent: isOtpSent ?? this.isOtpSent,
+      showPassword: showPassword ?? this.showPassword,
+      showConfirmPassword: showConfirmPassword ?? this.showConfirmPassword,
+      otpResendCountdown: otpResendCountdown ?? this.otpResendCountdown,
+      resetToken: resetToken ?? this.resetToken,
+    );
+  }
+}
+
+class ForgotPasswordNotifier extends AutoDisposeNotifier<ForgotPasswordState> {
   final _auth = FirebaseAuth.instance;
   String? _verificationId;
-  int? _tokenResend;
+  Timer? _countdownTimer;
 
   @override
-  void onClose() {
-    emailController.dispose();
-    phoneController.dispose();
-    otpController.dispose();
-    newPasswordController.dispose();
-    confirmPasswordController.dispose();
-    super.onClose();
+  ForgotPasswordState build() {
+    ref.onDispose(() {
+      _countdownTimer?.cancel();
+    });
+    return ForgotPasswordState();
   }
 
-  // ─── Step 1: User chooses email or phone ───────────────────────────────────
   void selectContactMethod(String method) {
-    contactMethod.value = method;
-    currentStep.value = 1;
+    state = state.copyWith(contactMethod: method, currentStep: 1);
   }
 
-  // ─── Step 2: Send OTP ───────────────────────────────────────────────────────
-  Future<void> sendOtp() async {
-    if (contactMethod.value == 'email') {
-      await _sendEmailOtp();
+  void toggleShowPassword() {
+    state = state.copyWith(showPassword: !state.showPassword);
+  }
+
+  void toggleShowConfirmPassword() {
+    state = state.copyWith(showConfirmPassword: !state.showConfirmPassword);
+  }
+
+  Future<void> sendOtp(BuildContext context, {required String email, required String phone}) async {
+    if (state.contactMethod == 'email') {
+      await _sendEmailOtp(context, email);
     } else {
-      await _sendPhoneOtp();
+      await _sendPhoneOtp(context, phone);
     }
   }
 
-  Future<void> _sendEmailOtp() async {
-    if (emailController.text.isEmpty) {
-      Get.snackbar('Error', 'Please enter your email address');
+  Future<void> _sendEmailOtp(BuildContext context, String email) async {
+    if (email.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter your email address')),
+      );
       return;
     }
 
-    isLoading.value = true;
+    state = state.copyWith(isLoading: true);
     try {
-      // Check if user exists with this email
-      final signinMethods = await _auth.fetchSignInMethodsForEmail(
-        emailController.text,
+      final apiClient = ref.read(apiClientProvider);
+      final response = await apiClient.post<Map<String, dynamic>>(
+        '/auth/password-reset',
+        data: {'email': email.trim()},
       );
 
-      if (signinMethods.isEmpty) {
-        Get.snackbar('Error', 'No account found with this email');
-        isLoading.value = false;
-        return;
+      final success = response['success'] as bool? ?? false;
+      if (success) {
+        state = state.copyWith(isOtpSent: true, currentStep: 2);
+        _startCountdown();
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(response['message'] ?? 'OTP code sent successfully')),
+          );
+        }
+      } else {
+        final errorMsg = response['error']?['message'] ?? 'Failed to send OTP code';
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(errorMsg)),
+          );
+        }
       }
-
-      // Send password reset email
-      await _auth.sendPasswordResetEmail(email: emailController.text);
-
-      isOtpSent.value = true;
-      currentStep.value = 2;
-      _startOtpResendCountdown();
-
-      Get.snackbar(
-        'Email Sent',
-        'Password reset link sent to ${emailController.text}',
-        snackPosition: SnackPosition.TOP,
-      );
-    } on FirebaseAuthException catch (e) {
-      Get.snackbar('Error', e.message ?? 'Failed to send reset email');
+    } catch (e) {
+      if (context.mounted) {
+        final msg = e.toString().contains('404')
+            ? 'No account found with this email address.'
+            : 'Failed to send verification code. Please try again.';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg)),
+        );
+      }
     } finally {
-      isLoading.value = false;
+      state = state.copyWith(isLoading: false);
     }
   }
 
-  Future<void> _sendPhoneOtp() async {
-    if (phoneController.text.isEmpty) {
-      Get.snackbar('Error', 'Please enter your phone number');
+  Future<void> _sendPhoneOtp(BuildContext context, String phone) async {
+    if (phone.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter your phone number')),
+      );
       return;
     }
 
-    // Ensure phone number has country code
-    String phoneNumber = phoneController.text;
+    String phoneNumber = phone.trim();
     if (!phoneNumber.startsWith('+')) {
-      phoneNumber = '+${phoneNumber}';
+      phoneNumber = '+$phoneNumber';
     }
 
-    isLoading.value = true;
+    state = state.copyWith(isLoading: true);
     try {
       await _auth.verifyPhoneNumber(
         phoneNumber: phoneNumber,
         verificationCompleted: (PhoneAuthCredential credential) async {
-          // Auto-retrieve SMS code
           await _auth.signInWithCredential(credential);
-          isOtpSent.value = true;
-          currentStep.value = 3;
+          state = state.copyWith(isOtpSent: true, currentStep: 3);
         },
         verificationFailed: (FirebaseAuthException e) {
-          Get.snackbar('Error', e.message ?? 'Phone verification failed');
-          isLoading.value = false;
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(e.message ?? 'Phone verification failed')),
+            );
+          }
+          state = state.copyWith(isLoading: false);
         },
         codeSent: (String verificationId, int? resendToken) {
           _verificationId = verificationId;
-          _tokenResend = resendToken;
-          isOtpSent.value = true;
-          currentStep.value = 2;
-          _startOtpResendCountdown();
-          Get.snackbar(
-            'Code Sent',
-            'OTP sent to $phoneNumber',
-            snackPosition: SnackPosition.TOP,
-          );
-          isLoading.value = false;
+          state = state.copyWith(isOtpSent: true, currentStep: 2);
+          _startCountdown();
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('OTP sent to $phoneNumber')),
+            );
+          }
+          state = state.copyWith(isLoading: false);
         },
         codeAutoRetrievalTimeout: (String verificationId) {
           _verificationId = verificationId;
@@ -131,121 +176,228 @@ class ForgotPasswordController extends GetxController {
         timeout: const Duration(minutes: 2),
       );
     } catch (e) {
-      Get.snackbar('Error', 'Failed to send OTP');
-      isLoading.value = false;
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to send OTP')),
+        );
+      }
+      state = state.copyWith(isLoading: false);
     }
   }
 
-  // ─── Step 3: Verify OTP and proceed to password reset ───────────────────────
-  Future<void> verifyOtp() async {
-    if (otpController.text.isEmpty) {
-      Get.snackbar('Error', 'Please enter the OTP');
+  Future<void> verifyOtp(BuildContext context, String email, String otp) async {
+    if (otp.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter the OTP')),
+      );
       return;
     }
 
-    if (contactMethod.value == 'email') {
-      // For email, OTP verification is handled via the reset link
-      // so we just move to password reset step
-      currentStep.value = 3;
+    if (state.contactMethod == 'email') {
+      state = state.copyWith(isLoading: true);
+      try {
+        final apiClient = ref.read(apiClientProvider);
+        final response = await apiClient.post<Map<String, dynamic>>(
+          '/auth/verify-otp',
+          data: {
+            'email': email.trim(),
+            'otp': otp.trim(),
+          },
+        );
+
+        final success = response['success'] as bool? ?? false;
+        if (success) {
+          final token = response['data']?['resetToken'] as String?;
+          state = state.copyWith(
+            resetToken: token,
+            currentStep: 3,
+          );
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Verification code verified successfully')),
+            );
+          }
+        } else {
+          final errorMsg = response['error']?['message'] ?? 'Invalid verification code';
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(errorMsg)),
+            );
+          }
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(e.toString().replaceAll('ApiException:', '').trim())),
+          );
+        }
+      } finally {
+        state = state.copyWith(isLoading: false);
+      }
       return;
     }
 
     if (_verificationId == null) {
-      Get.snackbar('Error', 'Verification ID not found');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Verification ID not found')),
+      );
       return;
     }
 
-    isLoading.value = true;
+    state = state.copyWith(isLoading: true);
     try {
       final credential = PhoneAuthProvider.credential(
         verificationId: _verificationId!,
-        smsCode: otpController.text,
+        smsCode: otp.trim(),
       );
-
       await _auth.signInWithCredential(credential);
-      currentStep.value = 3;
-      Get.snackbar('Success', 'OTP verified successfully');
+      state = state.copyWith(currentStep: 3);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('OTP verified successfully')),
+        );
+      }
     } on FirebaseAuthException catch (e) {
-      Get.snackbar('Error', e.message ?? 'Invalid OTP');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message ?? 'Invalid OTP')),
+        );
+      }
     } finally {
-      isLoading.value = false;
+      state = state.copyWith(isLoading: false);
     }
   }
 
-  // ─── Step 4: Reset Password ────────────────────────────────────────────────
-  Future<void> resetPassword() async {
-    if (newPasswordController.text.isEmpty) {
-      Get.snackbar('Error', 'Please enter new password');
+  Future<void> resetPassword(
+    BuildContext context,
+    String email,
+    String newPassword,
+    String confirmPassword,
+  ) async {
+    if (newPassword.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter new password')),
+      );
+      return;
+    }
+    if (newPassword.trim() != confirmPassword.trim()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Passwords do not match')),
+      );
+      return;
+    }
+    if (newPassword.trim().length < 6) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Password must be at least 6 characters')),
+      );
       return;
     }
 
-    if (newPasswordController.text != confirmPasswordController.text) {
-      Get.snackbar('Error', 'Passwords do not match');
+    if (state.contactMethod == 'email') {
+      if (state.resetToken == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Invalid password reset session. Please request a new code.')),
+        );
+        return;
+      }
+
+      state = state.copyWith(isLoading: true);
+      try {
+        final apiClient = ref.read(apiClientProvider);
+        final response = await apiClient.post<Map<String, dynamic>>(
+          '/auth/update-password',
+          data: {
+            'email': email.trim(),
+            'resetToken': state.resetToken,
+            'newPassword': newPassword.trim(),
+          },
+        );
+
+        final success = response['success'] as bool? ?? false;
+        if (success) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Password reset successfully. Please login with your new password.')),
+            );
+          }
+          await Future.delayed(const Duration(seconds: 1));
+          ref.read(routerProvider).go(Routes.LOGIN);
+        } else {
+          final errorMsg = response['error']?['message'] ?? 'Failed to reset password';
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(errorMsg)),
+            );
+          }
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(e.toString().replaceAll('ApiException:', '').trim())),
+          );
+        }
+      } finally {
+        state = state.copyWith(isLoading: false);
+      }
       return;
     }
 
-    if (newPasswordController.text.length < 6) {
-      Get.snackbar('Error', 'Password must be at least 6 characters');
-      return;
-    }
-
-    isLoading.value = true;
+    state = state.copyWith(isLoading: true);
     try {
       final user = _auth.currentUser;
       if (user != null) {
-        await user.updatePassword(newPasswordController.text);
-        // Sign out to allow login with new password
+        await user.updatePassword(newPassword.trim());
         await _auth.signOut();
-
-        Get.snackbar(
-          'Success',
-          'Password reset successfully. Please login with your new password.',
-          snackPosition: SnackPosition.TOP,
-        );
-
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Password reset successfully. Please login with your new password.')),
+          );
+        }
         await Future.delayed(const Duration(seconds: 1));
-        Get.offAllNamed(Routes.LOGIN);
+        ref.read(routerProvider).go(Routes.LOGIN);
       }
     } on FirebaseAuthException catch (e) {
-      Get.snackbar('Error', e.message ?? 'Failed to reset password');
-    } finally {
-      isLoading.value = false;
-    }
-  }
-
-  // ─── Resend OTP ────────────────────────────────────────────────────────────
-  Future<void> resendOtp() async {
-    if (otpResendCountdown.value > 0) return;
-
-    if (contactMethod.value == 'email') {
-      await _sendEmailOtp();
-    } else {
-      // Resend phone OTP with token
-      if (_tokenResend != null) {
-        await _sendPhoneOtp();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message ?? 'Failed to reset password')),
+        );
       }
+    } finally {
+      state = state.copyWith(isLoading: false);
     }
   }
 
-  // ─── Helper: Start resend countdown ────────────────────────────────────────
-  void _startOtpResendCountdown() {
-    otpResendCountdown.value = 60;
-    Future.delayed(const Duration(seconds: 1), () {
-      if (otpResendCountdown.value > 0) {
-        otpResendCountdown.value--;
-        _startOtpResendCountdown();
+  void _startCountdown() {
+    _countdownTimer?.cancel();
+    state = state.copyWith(otpResendCountdown: 60);
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (state.otpResendCountdown > 0) {
+        state = state.copyWith(otpResendCountdown: state.otpResendCountdown - 1);
+      } else {
+        _countdownTimer?.cancel();
       }
     });
   }
 
-  // ─── Go back to previous step ──────────────────────────────────────────────
-  void goBack() {
-    if (currentStep.value > 0) {
-      currentStep.value--;
-      isOtpSent.value = false;
-      otpResendCountdown.value = 0;
+  Future<void> resendOtp(BuildContext context, {required String email, required String phone}) async {
+    if (state.otpResendCountdown > 0) return;
+    await sendOtp(context, email: email, phone: phone);
+  }
+
+  void goBack(BuildContext context) {
+    if (state.currentStep > 0) {
+      _countdownTimer?.cancel();
+      state = state.copyWith(
+        currentStep: state.currentStep - 1,
+        isOtpSent: false,
+        otpResendCountdown: 0,
+      );
     } else {
-      Get.back();
+      context.pop();
     }
   }
 }
+
+final forgotPasswordNotifierProvider = AutoDisposeNotifierProvider<ForgotPasswordNotifier, ForgotPasswordState>(() {
+  return ForgotPasswordNotifier();
+});

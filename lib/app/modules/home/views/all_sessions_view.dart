@@ -1,224 +1,226 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../../config/glass_ui.dart';
 import '../../../services/favourites_service.dart';
+import '../controllers/home_controller.dart';
 
-// ─── Design Tokens ──────────────────────────────────────────────────────────
-const Color _ink = Color(0xFF0A0A0F);
-const Color _surface = Color(0xFF111118);
-const Color _card = Color(0xFF17171F);
-const Color _raised = Color(0xFF1E1E28);
-const Color _stroke = Color(0xFF2A2A36);
-const Color _neon = Color(0xFFCBFF47);
-const Color _coral = Color(0xFFFF5C5C);
-const Color _muted = Color(0xFF6B6B7E);
+// ─── Realtime Bookings Provider ──────────────────────────────────────────────
+final allBookingsProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
+  return FirebaseFirestore.instance
+      .collection('bookings')
+      .snapshots()
+      .map((snap) => snap.docs.map((d) => {'id': d.id, ...d.data()}).toList());
+});
 
-// ─── Studio sessions (in-person) ─────────────────────────────────────────────
-final List<Map<String, dynamic>> _studioSessions = [
-  {
-    'trainer': 'Alex Carter',
-    'specialty': 'Strength & HIIT',
-    'date': 'Mon, Mar 16, 2026',
-    'time': '07:00 AM',
-    'type': '1-on-1',
-    'status': 'open',
-    'portrait': 10,
-    'price': 65,
-    'spots': 1,
-    'rating': 4.9,
-    'sessions': 120,
-    'isAvailable': true,
-  },
-  {
-    'trainer': 'Jordan Miles',
-    'specialty': 'Yoga & Mobility',
-    'date': 'Tue, Mar 17, 2026',
-    'time': '09:00 AM',
-    'type': 'Group',
-    'status': 'open',
-    'portrait': 11,
-    'price': 35,
-    'spots': 8,
-    'rating': 4.7,
-    'sessions': 89,
-    'isAvailable': true,
-  },
-  {
-    'trainer': 'Priya Shah',
-    'specialty': 'Pilates & Core',
-    'date': 'Wed, Mar 18, 2026',
-    'time': '08:00 AM',
-    'type': 'Group',
-    'status': 'open',
-    'portrait': 47,
-    'price': 40,
-    'spots': 5,
-    'rating': 4.8,
-    'sessions': 74,
-    'isAvailable': true,
-  },
-  {
-    'trainer': 'Marcus Bell',
-    'specialty': 'Powerlifting',
-    'date': 'Thu, Mar 19, 2026',
-    'time': '06:00 PM',
-    'type': '1-on-1',
-    'status': 'open',
-    'portrait': 15,
-    'price': 55,
-    'spots': 1,
-    'rating': 4.8,
-    'sessions': 89,
-    'isAvailable': true,
-  },
-  {
-    'trainer': 'Chris Lee',
-    'specialty': 'CrossFit',
-    'date': 'Sat, Mar 21, 2026',
-    'time': '07:30 AM',
-    'type': 'Group',
-    'status': 'full',
-    'portrait': 13,
-    'price': 50,
-    'spots': 0,
-    'rating': 4.7,
-    'sessions': 63,
-    'isAvailable': false,
-  },
-  {
-    'trainer': 'Ryan Torres',
-    'specialty': 'Functional Training',
-    'date': 'Tue, Mar 24, 2026',
-    'time': '08:00 AM',
-    'type': '1-on-4',
-    'status': 'open',
-    'portrait': 63,
-    'price': 70,
-    'spots': 2,
-    'rating': 4.6,
-    'sessions': 51,
-    'isAvailable': true,
-  },
-  {
-    'trainer': 'Dana Kim',
-    'specialty': 'Mobility & Stretch',
-    'date': 'Wed, Mar 25, 2026',
-    'time': '10:00 AM',
-    'type': '1-on-4',
-    'status': 'open',
-    'portrait': 55,
-    'price': 45,
-    'spots': 3,
-    'rating': 4.5,
-    'sessions': 38,
-    'isAvailable': true,
-  },
-];
+// ─── Dynamic Slots Helpers ───────────────────────────────────────────────────
+String _getDayOfWeekString(DateTime date) {
+  const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  return weekdays[date.weekday - 1];
+}
 
-// ─── Online sessions ──────────────────────────────────────────────────────────
-final List<Map<String, dynamic>> _onlineSessions = [
-  {
-    'trainer': 'Sam Rivera',
-    'specialty': 'Cardio & Boxing',
-    'date': 'Fri, Mar 20, 2026',
-    'time': '05:30 PM',
-    'type': 'Video',
-    'status': 'open',
-    'portrait': 12,
-    'price': 45,
-    'spots': 10,
-    'rating': 4.6,
-    'sessions': 58,
-    'isAvailable': true,
-    'youtubeId': 'UItWltVZZmE',
-    'youtubeChannel': 'https://www.youtube.com/@SamRiveraFitness',
-  },
-  {
-    'trainer': 'Maya Patel',
-    'specialty': 'Nutrition & Wellness',
-    'date': 'Mon, Mar 23, 2026',
-    'time': '11:00 AM',
-    'type': 'Video',
-    'status': 'open',
-    'portrait': 44,
-    'price': 30,
-    'spots': 12,
-    'rating': 4.9,
-    'sessions': 103,
-    'isAvailable': true,
-    'youtubeId': 'sTANio_2E0Q',
-    'youtubeChannel': 'https://www.youtube.com/@MayaPatelWellness',
-  },
-  {
-    'trainer': 'Alex Carter',
-    'specialty': 'Strength & HIIT',
-    'date': 'Fri, Mar 27, 2026',
-    'time': '06:00 AM',
-    'type': '1-on-1',
-    'status': 'open',
-    'portrait': 10,
-    'price': 55,
-    'spots': 1,
-    'rating': 4.9,
-    'sessions': 120,
-    'isAvailable': true,
-  },
-  {
-    'trainer': 'Jordan Miles',
-    'specialty': 'Yoga & Mobility',
-    'date': 'Sat, Mar 28, 2026',
-    'time': '08:00 AM',
-    'type': '1-on-2',
-    'status': 'open',
-    'portrait': 11,
-    'price': 40,
-    'spots': 1,
-    'rating': 4.7,
-    'sessions': 89,
-    'isAvailable': true,
-  },
-  {
-    'trainer': 'Priya Shah',
-    'specialty': 'Pilates & Core',
-    'date': 'Sun, Mar 29, 2026',
-    'time': '09:00 AM',
-    'type': '1-on-4',
-    'status': 'open',
-    'portrait': 47,
-    'price': 25,
-    'spots': 3,
-    'rating': 4.8,
-    'sessions': 74,
-    'isAvailable': true,
-  },
-  {
-    'trainer': 'Marcus Bell',
-    'specialty': 'Powerlifting',
-    'date': 'Mon, Mar 30, 2026',
-    'time': '07:00 PM',
-    'type': '1-on-2',
-    'status': 'full',
-    'portrait': 15,
-    'price': 50,
-    'spots': 0,
-    'rating': 4.8,
-    'sessions': 89,
-    'isAvailable': false,
-  },
-];
+String _formatBookingDate(DateTime date) {
+  const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+  final weekday = weekdays[date.weekday - 1];
+  final month = months[date.month - 1];
+  return '$weekday, $month ${date.day}, ${date.year}';
+}
 
-class AllSessionsView extends StatefulWidget {
+List<String> _generateSlots(String startStr, String endStr) {
+  final startParts = startStr.split(':');
+  final endParts = endStr.split(':');
+
+  final startHour = int.tryParse(startParts.first) ?? 9;
+  final startMinute = (startParts.length > 1 ? int.tryParse(startParts[1]) : null) ?? 0;
+
+  final endHour = int.tryParse(endParts.first) ?? 18;
+  final endMinute = (endParts.length > 1 ? int.tryParse(endParts[1]) : null) ?? 0;
+
+  final List<String> slots = [];
+  var currentHour = startHour;
+  var currentMinute = startMinute;
+
+  while (true) {
+    if (currentHour > endHour || (currentHour == endHour && currentMinute >= endMinute)) {
+      break;
+    }
+
+    final ampm = currentHour >= 12 ? 'PM' : 'AM';
+    final displayHour = currentHour % 12 == 0 ? 12 : currentHour % 12;
+    final hourStr = displayHour.toString().padLeft(2, '0');
+    final minuteStr = currentMinute.toString().padLeft(2, '0');
+    final timeSlotStr = '$hourStr:$minuteStr $ampm';
+
+    slots.add(timeSlotStr);
+    currentHour += 1;
+  }
+
+  return slots;
+}
+
+int _extractPortraitIndex(String imageUrl, String name) {
+  final match = RegExp(r'portraits/men/(\d+)\.jpg').firstMatch(imageUrl);
+  if (match != null) {
+    return int.tryParse(match.group(1) ?? '10') ?? 10;
+  }
+  final matchWomen = RegExp(r'portraits/women/(\d+)\.jpg').firstMatch(imageUrl);
+  if (matchWomen != null) {
+    return int.tryParse(matchWomen.group(1) ?? '10') ?? 10;
+  }
+  return name.hashCode.abs() % 100;
+}
+
+List<Map<String, dynamic>> _generateDynamicSessions({
+  required List<Map<String, dynamic>> trainerCatalog,
+  required List<Map<String, dynamic>> allBookings,
+  required bool isOnlineTab,
+}) {
+  final now = DateTime.now();
+  final List<Map<String, dynamic>> sessions = [];
+  final Set<String> addedTrainerIds = {};
+
+  // Filter out static mock trainers, keeping only real trainers loaded from Firestore
+  final realTrainers = trainerCatalog.where((t) {
+    final id = (t['trainerId'] ?? t['id'] ?? '').toString();
+    const mockIds = {
+      '1', 's2', 's3', '2', 'y2', 'y3', '3', 'c2', 'c3', 'b1', 'b2', 'b3', 'sw1', 'sw2'
+    };
+    return id.isNotEmpty && !mockIds.contains(id);
+  }).toList();
+
+  for (int i = 0; i < 7; i++) {
+    final date = now.add(Duration(days: i));
+    final dayOfWeek = _getDayOfWeekString(date);
+    final formattedDate = _formatBookingDate(date);
+
+    for (final trainer in realTrainers) {
+      final trainerId = (trainer['trainerId'] ?? trainer['id'] ?? '').toString();
+      if (addedTrainerIds.contains(trainerId)) continue;
+
+      final availabilityMap = trainer['availability'];
+      if (availabilityMap is! Map || availabilityMap.isEmpty) continue;
+
+      final avail = availabilityMap[dayOfWeek];
+      if (avail == null || avail['enabled'] != true) continue;
+
+      final startStr = (avail['start'] ?? '09:00').toString();
+      final endStr = (avail['end'] ?? '18:00').toString();
+
+      final slots = _generateSlots(startStr, endStr);
+      if (slots.isEmpty) continue;
+
+      final trainerName = trainer['name']?.toString() ?? 'Trainer';
+
+      final locations = (trainer['sessionLocations'] is List)
+          ? List<String>.from(trainer['sessionLocations'])
+          : <String>[];
+
+      final supportsStudio = locations.isEmpty ||
+          locations.any((l) => l.toLowerCase().contains('studio') || l.toLowerCase().contains('in-person'));
+      final supportsOnline = locations.any((l) => l.toLowerCase().contains('online') || l.toLowerCase().contains('video'));
+
+      // Check support for this tab
+      if (isOnlineTab && !supportsOnline) continue;
+      if (!isOnlineTab && !supportsStudio) continue;
+
+      // Select the first slot of the day to represent the trainer's availability
+      final slot = slots.first;
+
+      final booking = allBookings.where((b) =>
+          b['trainerId'] == trainerId &&
+          b['date'] == formattedDate &&
+          b['time'] == slot &&
+          (b['status'] == 'pending' || b['status'] == 'confirmed')
+      ).firstWhereOrNull((_) => true);
+
+      String sessionType = '1-on-1';
+      int maxSpots = 1;
+
+      // Distribute types dynamically based on the date day to show diverse types under filter chips
+      if (isOnlineTab) {
+        if (date.day % 3 == 0) {
+          sessionType = 'Video';
+          maxSpots = 12;
+        } else if (date.day % 3 == 1) {
+          sessionType = '1-on-1';
+          maxSpots = 1;
+        } else {
+          sessionType = '1-on-2';
+          maxSpots = 2;
+        }
+      } else {
+        if (date.day % 3 == 0) {
+          sessionType = 'Group';
+          maxSpots = 10;
+        } else if (date.day % 3 == 1) {
+          sessionType = '1-on-4';
+          maxSpots = 4;
+        } else {
+          sessionType = '1-on-1';
+          maxSpots = 1;
+        }
+      }
+
+      final int bookedSpots = booking != null ? 1 : 0;
+      final int spotsLeft = (maxSpots - bookedSpots).clamp(0, maxSpots);
+      final bool isOpen = spotsLeft > 0 && trainer['isAvailable'] == true;
+
+      sessions.add({
+        'trainer': trainerName,
+        'trainerId': trainerId,
+        'id': trainerId,
+        'specialty': trainer['specialty'] ?? 'Personal Trainer',
+        'date': formattedDate,
+        'time': slot,
+        'type': sessionType,
+        'status': isOpen ? 'open' : 'full',
+        'price': isOnlineTab
+            ? ((trainer['pricePerHour'] as num?)?.toInt() ?? 45) - 10
+            : ((trainer['pricePerHour'] as num?)?.toInt() ?? 45),
+        'spots': spotsLeft,
+        'rating': (trainer['rating'] as num?)?.toDouble() ?? 4.9,
+        'sessions': (trainer['reviews'] as num?)?.toInt() ?? 100,
+        'isAvailable': trainer['isAvailable'] == true && isOpen,
+        'image': trainer['image'] ?? '',
+        'portrait': _extractPortraitIndex(trainer['image'] ?? '', trainerName),
+        if (isOnlineTab) 'youtubeId': 'UItWltVZZmE',
+        if (isOnlineTab) 'youtubeChannel': 'https://www.youtube.com/@SamRiveraFitness',
+      });
+
+      // Mark this trainer as added so they don't show up again
+      addedTrainerIds.add(trainerId);
+    }
+  }
+  return sessions;
+}
+
+class AllSessionsView extends ConsumerStatefulWidget {
   const AllSessionsView({super.key});
 
   @override
-  State<AllSessionsView> createState() => _AllSessionsViewState();
+  ConsumerState<AllSessionsView> createState() => _AllSessionsViewState();
 }
 
-class _AllSessionsViewState extends State<AllSessionsView>
+class _AllSessionsViewState extends ConsumerState<AllSessionsView>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+
+  Color get _ink => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF0A0A0F) : const Color(0xFFF9F9FC);
+  Color get _surface => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF111118) : const Color(0xFFFFFFFF);
+  Color get _card => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF17171F) : const Color(0xFFFFFFFF);
+  Color get _raised => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF1E1E28) : const Color(0xFFF0EFF5);
+  Color get _stroke => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF2A2A36) : const Color(0xFFE5E7EB);
+  Color get _neon => Theme.of(context).colorScheme.primary;
+  Color get _coral => Theme.of(context).brightness == Brightness.dark ? const Color(0xFFFF5C5C) : const Color(0xFFEF4444);
+  Color get _muted => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF6B6B7E) : Colors.black45;
+  Color get _text => Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black87;
 
   // Studio filter chips
   final List<String> _studioTypes = ['All', '1-on-1', '1-on-4', 'Group'];
@@ -248,20 +250,38 @@ class _AllSessionsViewState extends State<AllSessionsView>
 
   @override
   Widget build(BuildContext context) {
+    final homeState = ref.watch(homeNotifierProvider);
+    final bookingsAsync = ref.watch(allBookingsProvider);
+
+    final allBookings = bookingsAsync.value ?? const [];
+    final trainerCatalog = homeState.trainerCatalog;
+
+    final studioSessions = _generateDynamicSessions(
+      trainerCatalog: trainerCatalog,
+      allBookings: allBookings,
+      isOnlineTab: false,
+    );
+
+    final onlineSessions = _generateDynamicSessions(
+      trainerCatalog: trainerCatalog,
+      allBookings: allBookings,
+      isOnlineTab: true,
+    );
+
     return Scaffold(
       backgroundColor: _ink,
       appBar: AppBar(
         backgroundColor: _surface,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(CupertinoIcons.back, color: Colors.white),
-          onPressed: () => Get.back(),
+          icon: Icon(CupertinoIcons.back, color: _text),
+          onPressed: () => context.pop(),
         ),
         centerTitle: true,
-        title: const Text(
+        title: Text(
           'All Sessions',
           style: TextStyle(
-            color: Colors.white,
+            color: _text,
             fontWeight: FontWeight.w700,
             fontSize: 17,
           ),
@@ -314,10 +334,13 @@ class _AllSessionsViewState extends State<AllSessionsView>
       ),
       body: Stack(
         children: [
-          Positioned.fill(child: trainerBackground()),
+          Positioned.fill(child: trainerBackground(context)),
           TabBarView(
             controller: _tabController,
-            children: [_buildStudioTab(), _buildOnlineTab()],
+            children: [
+              _buildStudioTab(studioSessions),
+              _buildOnlineTab(onlineSessions),
+            ],
           ),
         ],
       ),
@@ -325,7 +348,7 @@ class _AllSessionsViewState extends State<AllSessionsView>
   }
 
   // ─── Studio Tab ────────────────────────────────────────────────────────────
-  Widget _buildStudioTab() {
+  Widget _buildStudioTab(List<Map<String, dynamic>> sessions) {
     return Container(
       color: Colors.transparent,
       child: Column(
@@ -337,7 +360,7 @@ class _AllSessionsViewState extends State<AllSessionsView>
           ),
           Expanded(
             child: _buildSessionList(
-              _studioSessions,
+              sessions,
               _studioTypes,
               _selectedStudioType,
             ),
@@ -348,7 +371,7 @@ class _AllSessionsViewState extends State<AllSessionsView>
   }
 
   // ─── Online Tab ────────────────────────────────────────────────────────────
-  Widget _buildOnlineTab() {
+  Widget _buildOnlineTab(List<Map<String, dynamic>> sessions) {
     return Container(
       color: Colors.transparent,
       child: Column(
@@ -360,7 +383,7 @@ class _AllSessionsViewState extends State<AllSessionsView>
           ),
           Expanded(
             child: _buildSessionList(
-              _onlineSessions,
+              sessions,
               _onlineTypes,
               _selectedOnlineType,
             ),
@@ -455,22 +478,27 @@ class _AllSessionsViewState extends State<AllSessionsView>
     final isOpen = s['status'] == 'open';
     final spots = s['spots'] as int;
     final statusColor = isOpen ? _neon : _coral;
+    final portrait = s['portrait'] ?? 10;
+    final imageUrl = (s['image'] ?? '').toString();
 
     return GestureDetector(
       onTap: () {
         if (s['type'] == 'Video') {
           _showVideoDetail(s);
         } else {
-          Get.toNamed(
+          context.push(
             '/trainer-details',
-            arguments: {
+            extra: {
               'name': s['trainer'],
               'specialty': s['specialty'],
               'rating': s['rating'] ?? 4.5,
               'sessions': s['sessions'] ?? 0,
-              'portrait': s['portrait'],
+              'portrait': portrait,
               'price': s['price'],
               'isAvailable': s['isAvailable'] ?? (s['status'] == 'open'),
+              'id': s['trainerId'] ?? s['id'] ?? '',
+              'trainerId': s['trainerId'] ?? s['id'] ?? '',
+              'image': imageUrl,
             },
           );
         }
@@ -500,15 +528,12 @@ class _AllSessionsViewState extends State<AllSessionsView>
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(12),
-                    child: Image.network(
-                      'https://randomuser.me/api/portraits/men/${s['portrait']}.jpg',
-                      fit: BoxFit.cover,
-                      errorBuilder:
-                          (_, __, ___) => const Icon(
-                            CupertinoIcons.person_fill,
-                            color: _neon,
-                            size: 22,
-                          ),
+                    child: PremiumAvatar(
+                      name: (s['trainer'] ?? 'Trainer').toString(),
+                      customPhotoUrl: imageUrl,
+                      size: 46,
+                      borderRadius: 12,
+                      isTrainer: true,
                     ),
                   ),
                 ),
@@ -520,8 +545,8 @@ class _AllSessionsViewState extends State<AllSessionsView>
                     children: [
                       Text(
                         s['trainer'] as String,
-                        style: const TextStyle(
-                          color: Colors.white,
+                        style: TextStyle(
+                          color: _text,
                           fontWeight: FontWeight.w700,
                           fontSize: 15,
                         ),
@@ -580,8 +605,8 @@ class _AllSessionsViewState extends State<AllSessionsView>
                   children: [
                     Text(
                       '\$${s['price']}/session',
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: _text,
                         fontWeight: FontWeight.w700,
                         fontSize: 15,
                       ),
@@ -605,20 +630,23 @@ class _AllSessionsViewState extends State<AllSessionsView>
                   child: ElevatedButton(
                     onPressed:
                         isOpen
-                            ? () => Get.toNamed(
+                            ? () => context.push(
                               '/book-session',
-                              arguments: {
+                              extra: {
                                 'name': s['trainer'],
                                 'specialty': s['specialty'],
                                 'portrait': s['portrait'],
                                 'price': s['price'],
+                                'trainerId': s['trainerId'] ?? s['id'] ?? '',
+                                'image': s['image'] ?? '',
+                                'rating': s['rating'] ?? 4.9,
                               },
                             )
                             : null,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: isOpen ? _neon : _raised,
                       disabledBackgroundColor: _raised,
-                      foregroundColor: _ink,
+                      foregroundColor: isOpen ? (Theme.of(context).brightness == Brightness.dark ? _ink : Colors.white) : _muted,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
@@ -629,7 +657,7 @@ class _AllSessionsViewState extends State<AllSessionsView>
                       isOpen ? 'Book Session' : 'Full',
                       style: TextStyle(
                         fontWeight: FontWeight.w700,
-                        color: isOpen ? _ink : _muted,
+                        color: isOpen ? (Theme.of(context).brightness == Brightness.dark ? _ink : Colors.white) : _muted,
                         fontSize: 13,
                       ),
                     ),
@@ -677,15 +705,16 @@ class _VideoDetailPageState extends State<_VideoDetailPage> {
   Map<String, dynamic> get session => widget.session;
 
   // design tokens (mirrors trainer_details_view)
-  static const Color _ink = Color(0xFF0A0A0F);
-  static const Color _card = Color(0xFF17171F);
-  static const Color _raised = Color(0xFF1E1E28);
-  static const Color _stroke = Color(0xFF2A2A36);
-  static const Color _neon = Color(0xFFCBFF47);
-  static const Color _coral = Color(0xFFFF5C5C);
-  static const Color _sky = Color(0xFF5CE8FF);
-  static const Color _lilac = Color(0xFFA78BFA);
-  static const Color _muted = Color(0xFF6B6B7E);
+  Color get _ink => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF0A0A0F) : const Color(0xFFF9F9FC);
+  Color get _card => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF17171F) : const Color(0xFFFFFFFF);
+  Color get _raised => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF1E1E28) : const Color(0xFFF0EFF5);
+  Color get _stroke => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF2A2A36) : const Color(0xFFE5E7EB);
+  Color get _neon => Theme.of(context).colorScheme.primary;
+  Color get _coral => Theme.of(context).brightness == Brightness.dark ? const Color(0xFFFF5C5C) : const Color(0xFFEF4444);
+  Color get _sky => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF5CE8FF) : const Color(0xFF06B6D4);
+  Color get _lilac => Theme.of(context).brightness == Brightness.dark ? const Color(0xFFA78BFA) : const Color(0xFF7C3AED);
+  Color get _muted => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF6B6B7E) : Colors.black45;
+  Color get _text => Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black87;
 
   Future<void> _openYouTube(String url, String fallback) async {
     final uri = Uri.parse(url);
@@ -720,7 +749,7 @@ class _VideoDetailPageState extends State<_VideoDetailPage> {
       backgroundColor: _ink,
       body: Stack(
         children: [
-          Positioned.fill(child: trainerBackground()),
+          Positioned.fill(child: trainerBackground(context)),
           SafeArea(
             bottom: false,
             child: SingleChildScrollView(
@@ -737,6 +766,7 @@ class _VideoDetailPageState extends State<_VideoDetailPage> {
                     sessions,
                     portrait,
                     isOpen,
+                    (s['image'] ?? '').toString(),
                   ),
 
                   Padding(
@@ -780,7 +810,7 @@ class _VideoDetailPageState extends State<_VideoDetailPage> {
                         Text(
                           description,
                           style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.7),
+                            color: _text.withValues(alpha: 0.7),
                             fontSize: 14,
                             height: 1.6,
                           ),
@@ -962,7 +992,7 @@ class _VideoDetailPageState extends State<_VideoDetailPage> {
                               child: Text(
                                 isOpen ? 'Book a Session' : 'Session Full',
                                 style: TextStyle(
-                                  color: isOpen ? _ink : _muted,
+                                  color: isOpen ? (Theme.of(context).brightness == Brightness.dark ? _ink : Colors.white) : _muted,
                                   fontSize: 16,
                                   fontWeight: FontWeight.w800,
                                 ),
@@ -976,7 +1006,15 @@ class _VideoDetailPageState extends State<_VideoDetailPage> {
                             // Message button
                             Expanded(
                               child: GestureDetector(
-                                onTap: () {},
+                                onTap: () {
+                                  final trainerId = (s['trainerId'] ?? s['id'] ?? '').toString();
+                                  context.push('/message-screen', extra: {
+                                    'name': name,
+                                    'specialty': spec,
+                                    'portrait': portrait,
+                                    'otherId': trainerId,
+                                  });
+                                },
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(
                                     vertical: 14,
@@ -988,17 +1026,17 @@ class _VideoDetailPageState extends State<_VideoDetailPage> {
                                   ),
                                   child: Row(
                                     mainAxisAlignment: MainAxisAlignment.center,
-                                    children: const [
+                                    children: [
                                       Icon(
                                         CupertinoIcons.chat_bubble,
-                                        color: Colors.white70,
+                                        color: _text.withValues(alpha: 0.7),
                                         size: 17,
                                       ),
-                                      SizedBox(width: 8),
+                                      const SizedBox(width: 8),
                                       Text(
                                         'Message',
                                         style: TextStyle(
-                                          color: Colors.white,
+                                          color: _text,
                                           fontSize: 14,
                                           fontWeight: FontWeight.w600,
                                         ),
@@ -1024,17 +1062,17 @@ class _VideoDetailPageState extends State<_VideoDetailPage> {
                                   ),
                                   child: Row(
                                     mainAxisAlignment: MainAxisAlignment.center,
-                                    children: const [
+                                    children: [
                                       Icon(
                                         CupertinoIcons.star,
-                                        color: Colors.white70,
+                                        color: _text.withValues(alpha: 0.7),
                                         size: 17,
                                       ),
-                                      SizedBox(width: 8),
+                                      const SizedBox(width: 8),
                                       Text(
                                         'Review',
                                         style: TextStyle(
-                                          color: Colors.white,
+                                          color: _text,
                                           fontSize: 14,
                                           fontWeight: FontWeight.w600,
                                         ),
@@ -1068,27 +1106,47 @@ class _VideoDetailPageState extends State<_VideoDetailPage> {
     int sessions,
     int portrait,
     bool isOpen,
+    String imageUrl,
   ) {
     return Stack(
       children: [
         SizedBox(
           height: 320,
           width: double.infinity,
-          child: Image.network(
-            'https://randomuser.me/api/portraits/men/$portrait.jpg',
-            fit: BoxFit.cover,
-            errorBuilder:
-                (_, __, ___) => Container(
-                  color: _raised,
-                  child: const Center(
-                    child: Icon(
-                      CupertinoIcons.person_fill,
-                      color: _muted,
-                      size: 80,
+          child: imageUrl.isNotEmpty
+              ? Image.network(
+                  imageUrl,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Image.network(
+                    'https://randomuser.me/api/portraits/men/$portrait.jpg',
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(
+                      color: _raised,
+                      child: Center(
+                        child: Icon(
+                          CupertinoIcons.person_fill,
+                          color: _muted,
+                          size: 80,
+                        ),
+                      ),
                     ),
                   ),
+                )
+              : Image.network(
+                  'https://randomuser.me/api/portraits/men/$portrait.jpg',
+                  fit: BoxFit.cover,
+                  errorBuilder:
+                      (_, __, ___) => Container(
+                        color: _raised,
+                        child: Center(
+                          child: Icon(
+                            CupertinoIcons.person_fill,
+                            color: _muted,
+                            size: 80,
+                          ),
+                        ),
+                      ),
                 ),
-          ),
         ),
         // gradient overlay
         Positioned.fill(
@@ -1129,9 +1187,10 @@ class _VideoDetailPageState extends State<_VideoDetailPage> {
         Positioned(
           top: 12,
           right: 16,
-          child: Builder(
-            builder: (_) {
-              final favSvc = Get.find<FavouritesService>();
+          child: Consumer(
+            builder: (context, ref, _) {
+              final favourites = ref.watch(favouritesServiceProvider);
+              final favNotifier = ref.read(favouritesServiceProvider.notifier);
               final trainerMap = {
                 'name': session['trainer'],
                 'specialty': session['specialty'],
@@ -1143,11 +1202,10 @@ class _VideoDetailPageState extends State<_VideoDetailPage> {
                 'isAvailable': session['status'] == 'open',
                 'image': '',
               };
-              final isFav = favSvc.isFavourite(session['trainer'] as String);
+              final isFav = favourites.any((f) => f['name'] == session['trainer']);
               return GestureDetector(
                 onTap: () {
-                  favSvc.toggle(trainerMap);
-                  setState(() {});
+                  favNotifier.toggle(trainerMap);
                 },
                 child: Container(
                   width: 40,
@@ -1202,8 +1260,8 @@ class _VideoDetailPageState extends State<_VideoDetailPage> {
                     const SizedBox(height: 8),
                     Text(
                       name,
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: _text,
                         fontSize: 26,
                         fontWeight: FontWeight.w900,
                         letterSpacing: -0.5,
@@ -1213,7 +1271,7 @@ class _VideoDetailPageState extends State<_VideoDetailPage> {
                     Text(
                       spec,
                       style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.7),
+                        color: _text.withValues(alpha: 0.7),
                         fontSize: 14,
                       ),
                     ),
@@ -1234,7 +1292,7 @@ class _VideoDetailPageState extends State<_VideoDetailPage> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(
+                    Icon(
                       CupertinoIcons.star_fill,
                       color: _neon,
                       size: 16,
@@ -1242,8 +1300,8 @@ class _VideoDetailPageState extends State<_VideoDetailPage> {
                     const SizedBox(width: 4),
                     Text(
                       rat.toStringAsFixed(1),
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: _text,
                         fontSize: 14,
                         fontWeight: FontWeight.w800,
                       ),
@@ -1293,8 +1351,8 @@ class _VideoDetailPageState extends State<_VideoDetailPage> {
             const SizedBox(height: 8),
             Text(
               value,
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: _text,
                 fontSize: 16,
                 fontWeight: FontWeight.w800,
                 letterSpacing: -0.3,
@@ -1360,8 +1418,8 @@ class _VideoDetailPageState extends State<_VideoDetailPage> {
                   const SizedBox(width: 12),
                   Text(
                     c['label'] as String,
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: _text,
                       fontSize: 13,
                       fontWeight: FontWeight.w500,
                     ),
@@ -1468,7 +1526,7 @@ class _VideoDetailPageState extends State<_VideoDetailPage> {
             _sectionTitle('Reviews'),
             Row(
               children: [
-                const Icon(CupertinoIcons.star_fill, color: _neon, size: 14),
+                Icon(CupertinoIcons.star_fill, color: _neon, size: 14),
                 const SizedBox(width: 4),
                 Text(
                   '4.8  ·  ${reviews.length * 34} reviews',
@@ -1506,8 +1564,8 @@ class _VideoDetailPageState extends State<_VideoDetailPage> {
                         children: [
                           Text(
                             r['name'] as String,
-                            style: const TextStyle(
-                              color: Colors.white,
+                            style: TextStyle(
+                              color: _text,
                               fontWeight: FontWeight.w700,
                               fontSize: 13,
                             ),
@@ -1539,7 +1597,7 @@ class _VideoDetailPageState extends State<_VideoDetailPage> {
                 Text(
                   r['comment'] as String,
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.72),
+                    color: _text.withValues(alpha: 0.72),
                     fontSize: 13,
                     height: 1.5,
                   ),
@@ -1555,8 +1613,8 @@ class _VideoDetailPageState extends State<_VideoDetailPage> {
   // ── Helpers ────────────────────────────────────────────────────────────────
   Widget _sectionTitle(String text) => Text(
     text,
-    style: const TextStyle(
-      color: Colors.white,
+    style: TextStyle(
+      color: _text,
       fontSize: 17,
       fontWeight: FontWeight.w800,
       letterSpacing: -0.3,
@@ -1566,8 +1624,9 @@ class _VideoDetailPageState extends State<_VideoDetailPage> {
   Widget _chip(
     IconData icon,
     String label, {
-    Color accent = const Color(0xFFCBFF47),
+    Color? accent,
   }) {
+    final activeAccent = accent ?? Theme.of(context).colorScheme.primary;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: BoxDecoration(
@@ -1578,12 +1637,12 @@ class _VideoDetailPageState extends State<_VideoDetailPage> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: accent, size: 14),
+          Icon(icon, color: activeAccent, size: 14),
           const SizedBox(width: 6),
           Text(
             label,
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: _text,
               fontSize: 12,
               fontWeight: FontWeight.w500,
             ),

@@ -1,24 +1,31 @@
 import 'dart:ui';
-
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../config/glass_ui.dart';
 import '../controllers/trainer_availability_controller.dart';
 
-class TrainerAvailabilityView extends GetView<TrainerAvailabilityController> {
+class TrainerAvailabilityView extends ConsumerWidget {
   const TrainerAvailabilityView({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final controller = ref.watch(trainerAvailabilityProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final ink = isDark ? const Color(0xFF0A0A0F) : const Color(0xFFF9F9FC);
+    final text = isDark ? Colors.white : Colors.black87;
+    final muted = isDark ? const Color(0xFF6B6B7E) : Colors.black54;
+    final neon = Theme.of(context).colorScheme.primary;
+
     return Scaffold(
-      backgroundColor: kInk,
+      backgroundColor: ink,
       extendBodyBehindAppBar: true,
-      appBar: glassAppBar(title: 'Availability', onBack: () => Get.back()),
+      appBar: glassAppBar(title: 'Availability', onBack: () => context.pop(), context: context),
       body: Stack(
         children: [
-          Positioned.fill(child: trainerBackground()),
+          Positioned.fill(child: trainerBackground(context)),
           SafeArea(
             child: Column(
               children: [
@@ -41,7 +48,7 @@ class TrainerAvailabilityView extends GetView<TrainerAvailabilityController> {
                                 'Set Your Schedule',
                                 style: GoogleFonts.bebasNeue(
                                   fontSize: 24,
-                                  color: Colors.white,
+                                  color: text,
                                   letterSpacing: 1,
                                 ),
                               ),
@@ -50,31 +57,29 @@ class TrainerAvailabilityView extends GetView<TrainerAvailabilityController> {
                                 'Choose when you\'re available',
                                 style: GoogleFonts.dmSans(
                                   fontSize: 11,
-                                  color: kMuted,
+                                  color: muted,
                                 ),
                               ),
                             ],
                           ),
-                          Obx(
-                            () => Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 8,
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(20),
+                              color: neon.withValues(alpha: 0.2),
+                              border: Border.all(
+                                color: neon.withValues(alpha: 0.5),
                               ),
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(20),
-                                color: kNeon.withValues(alpha: 0.2),
-                                border: Border.all(
-                                  color: kNeon.withValues(alpha: 0.5),
-                                ),
-                              ),
-                              child: Text(
-                                '${controller.activeCount} Active',
-                                style: GoogleFonts.dmSans(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  color: kNeon,
-                                ),
+                            ),
+                            child: Text(
+                              '${controller.activeCount} Active',
+                              style: GoogleFonts.dmSans(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: neon,
                               ),
                             ),
                           ),
@@ -91,36 +96,34 @@ class TrainerAvailabilityView extends GetView<TrainerAvailabilityController> {
                       right: 10,
                       bottom: 8,
                     ),
-                    child: Obx(
-                      () => GridView.builder(
-                        physics: const NeverScrollableScrollPhysics(),
-                        shrinkWrap: true,
-                        gridDelegate:
-                            const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 2,
-                              childAspectRatio: 1.25,
-                              crossAxisSpacing: 8,
-                              mainAxisSpacing: 8,
-                            ),
-                        itemCount: controller.availability.length,
-                        itemBuilder: (context, index) {
-                          final entry =
-                              controller.availability.entries.toList()[index];
-                          final day = entry.key;
-                          final dayData = entry.value;
-                          return _DayAvailabilityCard(
-                            day: day,
-                            isActive: dayData['active'],
-                            startTime: dayData['startTime'],
-                            endTime: dayData['endTime'],
-                            onToggle: () => controller.toggleDay(day),
-                            onStartTimeChanged:
-                                (time) => controller.setStartTime(day, time),
-                            onEndTimeChanged:
-                                (time) => controller.setEndTime(day, time),
-                          );
-                        },
-                      ),
+                    child: GridView.builder(
+                      physics: const NeverScrollableScrollPhysics(),
+                      shrinkWrap: true,
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 2,
+                            childAspectRatio: 1.25,
+                            crossAxisSpacing: 8,
+                            mainAxisSpacing: 8,
+                          ),
+                      itemCount: controller.availability.length,
+                      itemBuilder: (context, index) {
+                        final entry =
+                            controller.availability.entries.toList()[index];
+                        final day = entry.key;
+                        final dayData = entry.value;
+                        return _DayAvailabilityCard(
+                          day: day,
+                          isActive: dayData['active'] as bool,
+                          startTime: dayData['startTime'] as String,
+                          endTime: dayData['endTime'] as String,
+                          onToggle: () => controller.toggleDay(day),
+                          onStartTimeChanged:
+                              (time) => controller.setStartTime(day, time),
+                          onEndTimeChanged:
+                              (time) => controller.setEndTime(day, time),
+                        );
+                      },
                     ),
                   ),
                 ),
@@ -131,9 +134,20 @@ class TrainerAvailabilityView extends GetView<TrainerAvailabilityController> {
                     width: double.infinity,
                     height: 48,
                     child: ElevatedButton(
-                      onPressed: controller.saveAvailability,
+                      onPressed: () {
+                        controller.saveAvailability(
+                          onNotify: (title, msg) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('$title: $msg'),
+                                backgroundColor: neon,
+                              ),
+                            );
+                          },
+                        );
+                      },
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: kNeon,
+                        backgroundColor: neon,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16),
                         ),
@@ -143,7 +157,7 @@ class TrainerAvailabilityView extends GetView<TrainerAvailabilityController> {
                         style: GoogleFonts.dmSans(
                           fontSize: 16,
                           fontWeight: FontWeight.w700,
-                          color: kInk,
+                          color: isDark ? const Color(0xFF07010E) : Colors.white,
                         ),
                       ),
                     ),
@@ -161,7 +175,7 @@ class TrainerAvailabilityView extends GetView<TrainerAvailabilityController> {
 // Individual day card
 class _DayAvailabilityCard extends StatefulWidget {
   final String day;
-  final RxBool isActive;
+  final bool isActive;
   final String startTime;
   final String endTime;
   final VoidCallback onToggle;
@@ -185,6 +199,13 @@ class _DayAvailabilityCard extends StatefulWidget {
 class _DayAvailabilityCardState extends State<_DayAvailabilityCard> {
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final text = isDark ? Colors.white : Colors.black87;
+    final muted = isDark ? const Color(0xFF6B6B7E) : Colors.black54;
+    final neon = Theme.of(context).colorScheme.primary;
+    final card = isDark ? const Color(0xFF17171F) : const Color(0xFFFFFFFF);
+    final stroke = isDark ? const Color(0xFF2A2A36) : const Color(0xFFE5E7EB);
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(10),
       child: BackdropFilter(
@@ -192,8 +213,8 @@ class _DayAvailabilityCardState extends State<_DayAvailabilityCard> {
         child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(10),
-            color: Colors.white.withValues(alpha: 0.08),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+            color: isDark ? Colors.white.withValues(alpha: 0.08) : card,
+            border: Border.all(color: stroke),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -213,79 +234,71 @@ class _DayAvailabilityCardState extends State<_DayAvailabilityCard> {
                             style: GoogleFonts.dmSans(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
-                              color: Colors.white,
+                              color: text,
                             ),
                           ),
-                          Obx(
-                            () => Text(
-                              widget.isActive.value ? 'Available' : 'Off',
-                              style: GoogleFonts.dmSans(
-                                fontSize: 8,
-                                color: widget.isActive.value ? kNeon : kMuted,
-                                fontWeight: FontWeight.w600,
-                              ),
+                          Text(
+                            widget.isActive ? 'Available' : 'Off',
+                            style: GoogleFonts.dmSans(
+                              fontSize: 8,
+                              color: widget.isActive ? neon : muted,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
                         ],
                       ),
                     ),
-                    Obx(
-                      () => Transform.scale(
-                        scale: 0.65,
-                        child: Switch(
-                          value: widget.isActive.value,
-                          onChanged: (_) => widget.onToggle(),
-                          activeThumbColor: kNeon,
-                          inactiveTrackColor: kMuted.withValues(alpha: 0.3),
-                        ),
+                    Transform.scale(
+                      scale: 0.65,
+                      child: Switch(
+                        value: widget.isActive,
+                        onChanged: (_) => widget.onToggle(),
+                        activeThumbColor: neon,
+                        inactiveTrackColor: muted.withValues(alpha: 0.3),
                       ),
                     ),
                   ],
                 ),
               ),
               // Time pickers (collapsible)
-              Obx(
-                () => AnimatedSize(
-                  duration: const Duration(milliseconds: 250),
-                  curve: Curves.easeInOut,
-                  child:
-                      widget.isActive.value
-                          ? Padding(
-                            padding: const EdgeInsets.fromLTRB(5, 1, 5, 4),
-                            child: Column(
+              AnimatedSize(
+                duration: const Duration(milliseconds: 250),
+                curve: Curves.easeInOut,
+                child: widget.isActive
+                    ? Padding(
+                        padding: const EdgeInsets.fromLTRB(5, 1, 5, 4),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              height: 0.5,
+                              color: stroke,
+                              margin: const EdgeInsets.only(bottom: 3),
+                            ),
+                            Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Container(
-                                  height: 0.5,
-                                  color: Colors.white.withOpacity(0.1),
-                                  margin: const EdgeInsets.only(bottom: 3),
+                                Expanded(
+                                  child: _CompactTimePicker(
+                                    label: 'Start',
+                                    time: widget.startTime,
+                                    onTimeChanged: widget.onStartTimeChanged,
+                                  ),
                                 ),
-                                Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Expanded(
-                                      child: _CompactTimePicker(
-                                        label: 'Start',
-                                        time: widget.startTime,
-                                        onTimeChanged:
-                                            widget.onStartTimeChanged,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 3),
-                                    Expanded(
-                                      child: _CompactTimePicker(
-                                        label: 'End',
-                                        time: widget.endTime,
-                                        onTimeChanged: widget.onEndTimeChanged,
-                                      ),
-                                    ),
-                                  ],
+                                const SizedBox(width: 3),
+                                Expanded(
+                                  child: _CompactTimePicker(
+                                    label: 'End',
+                                    time: widget.endTime,
+                                    onTimeChanged: widget.onEndTimeChanged,
+                                  ),
                                 ),
                               ],
                             ),
-                          )
-                          : const SizedBox.shrink(),
-                ),
+                          ],
+                        ),
+                      )
+                    : const SizedBox.shrink(),
               ),
             ],
           ),
@@ -309,14 +322,20 @@ class _CompactTimePicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final text = isDark ? Colors.white : Colors.black87;
+    final muted = isDark ? const Color(0xFF6B6B7E) : Colors.black54;
+    final stroke = isDark ? const Color(0xFF2A2A36) : const Color(0xFFE5E7EB);
+    final raised = isDark ? const Color(0xFF1E1E28) : const Color(0xFFF0EFF5);
+
     return GestureDetector(
       onTap: () => _showTimePicker(context),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 3),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(6),
-          color: Colors.white.withValues(alpha: 0.08),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+          color: isDark ? Colors.white.withValues(alpha: 0.08) : raised,
+          border: Border.all(color: stroke),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -326,7 +345,7 @@ class _CompactTimePicker extends StatelessWidget {
               label,
               style: GoogleFonts.dmSans(
                 fontSize: 7,
-                color: kMuted,
+                color: muted,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -334,7 +353,7 @@ class _CompactTimePicker extends StatelessWidget {
               time,
               style: GoogleFonts.dmSans(
                 fontSize: 10,
-                color: Colors.white,
+                color: text,
                 fontWeight: FontWeight.w700,
               ),
             ),

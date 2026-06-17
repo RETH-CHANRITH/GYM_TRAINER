@@ -1,0 +1,268 @@
+{
+  "documents": [
+    {
+      "name": "projects/gym-trainer-booking-app/databases/(default)/documents/trainerPosts/6BhibpkvUJpuFlwgg6n0",
+      "fields": {
+        "title": {
+          "stringValue": "professional trainer"
+        },
+        "postDate": {
+          "stringValue": "2026-06-15"
+        },
+        "tags": {
+          "arrayValue": {
+            "values": [
+              {
+                "stringValue": "muscle gain"
+              },
+              {
+                "stringValue": "advanced"
+              },
+              {
+                "stringValue": "strength"
+              },
+              {
+                "stringValue": "yoga"
+              }
+            ]
+          }
+        },
+        "caption": {
+          "stringValue": "this class  create for people that don't have experaine"
+        },
+        "imageUrl": {
+          "stringValue": "https://wrnimhuovvyhysiufffd.supabase.co/storage/v1/object/public/images/trainer-posts/h8bnso2mbTPWQF0KrEflU3DwieG2_1781450248987.jpg"
+        },
+        "postYear": {
+          "integerValue": "2026"
+        },
+        "trainerPhotoUrl": {
+          "stringValue": "https://wrnimhuovvyhysiufffd.supabase.co/storage/v1/object/public/images/profiles/h8bnso2mbTPWQF0KrEflU3DwieG2_1781422525774.jpg"
+        },
+        "trainerName": {
+          "stringValue": "BUTH"
+        },
+        "createdAt": {
+          "timestampValue": "2026-06-14T15:17:41.843Z"
+        },
+        "updatedAt": {
+          "timestampValue": "2026-06-14T15:17:41.843Z"
+        },
+        "likedBy": {
+          "arrayValue": {
+            "values": [
+              {
+                "stringValue": "jaX4tiFMNbYXlO5oD4k4k87WV592"
+              }
+            ]
+          }
+        },
+        "likesCount": {
+          "integerValue": "1"
+        },
+        "date": {
+          "stringValue": "2026-06-15"
+        },
+        "category": {
+          "stringValue": "Progress"
+        },
+        "isActive": {
+          "booleanValue": true
+        },
+        "trainerId": {
+          "stringValue": "h8bnso2mbTPWQF0KrEflU3DwieG2"
+        },
+        "commentsCount": {
+          "integerValue": "2"
+        },
+        "createdAtClient": {
+          "timestampValue": "2026-06-14T15:17:39.145346Z"
+        },
+        "postDay": {
+          "integerValue": "15"
+        },
+        "postMonth": {
+          "integerValue": "6"
+        }
+      },
+      "createTime": "2026-06-14T15:17:41.885628Z",
+      "updateTime": "2026-06-15T14:44:40.293686Z"
+    },
+    {
+      "name": "projects/gym-trainer-booking-app/databases/(default)/documents/trainerPosts/DNnbGjPNN30fDB2zEkVh",
+      "fields": {
+        "likedBy": {
+          "arrayValue": {
+            "values": [
+              {
+                "stringValue": "jaX4tiFMNbYXlO5oD4k4k87WV592"
+              }
+            ]
+          }
+        },
+        "updatedAt": {
+          "timestampValue": "2026-03-30T15:16:18.197Z"
+        },
+        "trainerName": {
+          "stringValue": "User"
+        },
+        "createdAt": {
+          "timestampValue": "2026-03-30T15:16:18.197Z"
+        },
+        "trainerPhotoUrl": {
+          "stringValue": "https://wrnimhuovvyhysiufffd.supabase.co/storage/v1/object/public/images/profiles/SctackhrLBdaiQt1Njp4YEJg5yo1_1773592183488.jpg"
+        },
+        "postYear": {
+          "integerValue": "2026"
+        },
+        "imageUrl": {
+          "stringValue": "https://wrnimhuovvyhysiufffd.supabase.co/storage/v1/object/public/images/trainer-posts/SctackhrLBdaiQt1Njp4YEJg5yo1_1774883483488.jpg"
+        },
+        "caption": {
+          "stringValue": "this class is really gym with professonal and work day by day"
+        },
+        "tags": {
+          "arrayValue": {
+            "values": [
+              {
+                "stringValue": "fat loss"
+              },
+              {
+                "stringValue": "beginner"
+              },
+              {
+                "stringValue": "advanced"
+              },
+              {
+                "stringValue": "strength"
+              },
+              {
+                "stringValue": "yoga"
+              }
+            ]
+          }
+        },
+        "postDate": {
+          "stringValue": "2026-03-30"
+        },
+        "title": {
+          "stringValue": "Hello everyone"
+        },
+        "postMonth": {
+          "integerValue": "3"
+        },
+        "createdAtClient": {
+          "timestampValue": "2026-03-30T15:16:17.720109Z"
+        },
+        "postDay": {
+          "integerValue": "30"
+        },
+        "commentsCount": {
+          "integerValue": "1"
+        },
+        "trainerId": {
+          "stringValue": "SctackhrLBdaiQt1Njp4YEJg5yo1"
+        },
+        "isActive": {
+          "booleanValue": true
+        },
+        "category": {
+          "stringValue": "Progress"
+        },
+        "likesCount": {
+          "integerValue": "1"
+        }
+      },
+      "createTime": "2026-03-30T15:16:18.227882Z",
+      "updateTime": "2026-06-07T06:29:42.297125Z"
+    },
+    {
+      "name": "projects/gym-trainer-booking-app/databases/(default)/documents/trainerPosts/s2THQgweCJDHhbZrIrZU",
+      "fields": {
+        "commentsCount": {
+          "integerValue": "12"
+        },
+        "isActive": {
+          "booleanValue": true
+        },
+        "trainerId": {
+          "stringValue": "p5zSvB4B9Gh0E72y2FrAsN8LlZd2"
+        },
+        "date": {
+          "stringValue": "2026-06-04"
+        },
+        "category": {
+          "stringValue": "Progress"
+        },
+        "likesCount": {
+          "integerValue": "2"
+        },
+        "postMonth": {
+          "integerValue": "6"
+        },
+        "createdAtClient": {
+          "timestampValue": "2026-06-04T11:18:37.080292Z"
+        },
+        "postDay": {
+          "integerValue": "4"
+        },
+        "imageUrl": {
+          "stringValue": "https://wrnimhuovvyhysiufffd.supabase.co/storage/v1/object/public/images/trainer-posts/p5zSvB4B9Gh0E72y2FrAsN8LlZd2_1780571893990.jpg"
+        },
+        "caption": {
+          "stringValue": "this class build for testing"
+        },
+        "tags": {
+          "arrayValue": {
+            "values": [
+              {
+                "stringValue": "advanced"
+              },
+              {
+                "stringValue": "strength"
+              },
+              {
+                "stringValue": "motivation"
+              }
+            ]
+          }
+        },
+        "postDate": {
+          "stringValue": "2026-06-04"
+        },
+        "title": {
+          "stringValue": "testing"
+        },
+        "likedBy": {
+          "arrayValue": {
+            "values": [
+              {
+                "stringValue": "jaX4tiFMNbYXlO5oD4k4k87WV592"
+              },
+              {
+                "stringValue": "p5zSvB4B9Gh0E72y2FrAsN8LlZd2"
+              }
+            ]
+          }
+        },
+        "updatedAt": {
+          "timestampValue": "2026-06-04T11:18:38.323Z"
+        },
+        "trainerName": {
+          "stringValue": "anh rith kach"
+        },
+        "createdAt": {
+          "timestampValue": "2026-06-04T11:18:38.323Z"
+        },
+        "trainerPhotoUrl": {
+          "stringValue": "https://wrnimhuovvyhysiufffd.supabase.co/storage/v1/object/public/images/profiles/p5zSvB4B9Gh0E72y2FrAsN8LlZd2_1780571410836.jpg"
+        },
+        "postYear": {
+          "integerValue": "2026"
+        }
+      },
+      "createTime": "2026-06-04T11:18:38.369317Z",
+      "updateTime": "2026-06-07T14:34:36.986310Z"
+    }
+  ]
+}

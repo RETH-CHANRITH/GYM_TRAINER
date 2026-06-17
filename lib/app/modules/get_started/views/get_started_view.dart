@@ -1,16 +1,16 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
-
-import '../controllers/get_started_controller.dart';
 import '../../../../config/glass_ui.dart';
+import '../../../routes/app_router.dart' show Routes;
 
-class GetStartedView extends GetView<GetStartedController> {
+class GetStartedView extends StatelessWidget {
   const GetStartedView({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
+    final kNeon = Theme.of(context).colorScheme.primary;
     return Scaffold(
       backgroundColor: kInk,
       body: Stack(
@@ -96,7 +96,7 @@ class GetStartedView extends GetView<GetStartedController> {
                   neonButton(
                     label: 'Continue',
                     accent: kSky,
-                    onPressed: () => controller.startProfile(),
+                    onPressed: () => context.go(Routes.GENDER_SELECTION),
                   ),
                   const SizedBox(height: 24),
                 ],

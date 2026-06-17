@@ -1,28 +1,36 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../../config/glass_ui.dart';
 import '../controllers/settings_controller.dart';
+import '../../../services/user_profile_service.dart';
+import '../../../routes/app_router.dart' show Routes;
+import '../../../providers/theme_provider.dart';
+import '../../../providers/appearance_provider.dart';
 
 // ─── Design Tokens ──────────────────────────────────────────────────────────
-const Color ink = Color(0xFF0A0A0F);
-const Color surface = Color(0xFF111118);
-const Color card = Color(0xFF17171F);
-const Color raised = Color(0xFF1E1E28);
-const Color stroke = Color(0xFF2A2A36);
 const Color neon = Color(0xFFCBFF47);
 const Color coral = Color(0xFFFF5C5C);
 const Color sky = Color(0xFF5CE8FF);
 const Color lilac = Color(0xFFA78BFA);
 const Color muted = Color(0xFF6B6B7E);
 
-class SettingsView extends GetView<SettingsController> {
+class SettingsView extends ConsumerWidget {
   const SettingsView({super.key});
 
-  Future<void> _showEditProfileSheet(BuildContext context) async {
-    final p = controller.profile;
-    final nameCtrl = TextEditingController(text: p.name.value);
-    final emailCtrl = TextEditingController(text: p.email.value);
+  Color _ink(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF0A0A0F) : const Color(0xFFF9F9FC);
+  Color _card(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF17171F) : const Color(0xFFFFFFFF);
+  Color _raised(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF1E1E28) : const Color(0xFFF0EFF5);
+  Color _text(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black87;
+  Color _muted(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF8484A0) : Colors.black45;
+  Color _divider(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? Colors.white.withOpacity(0.12) : Colors.black.withOpacity(0.08);
+  Color _neon(BuildContext context) => Theme.of(context).colorScheme.primary;
+
+  Future<void> _showEditProfileSheet(BuildContext context, WidgetRef ref) async {
+    final p = ref.read(userProfileServiceProvider);
+    final nameCtrl = TextEditingController(text: p.name);
+    final emailCtrl = TextEditingController(text: p.email);
     final currentPasswordCtrl = TextEditingController();
     final hideCurrentPassword = ValueNotifier<bool>(true);
 
@@ -31,226 +39,207 @@ class SettingsView extends GetView<SettingsController> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder:
-          (_) => Padding(
+          (sheetContext) => Padding(
             padding: EdgeInsets.only(
-              bottom: MediaQuery.of(context).viewInsets.bottom,
+              bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
             ),
             child: Container(
-              decoration: const BoxDecoration(
-                color: card,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              decoration: BoxDecoration(
+                color: _card(context),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
               ),
               padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Center(
-                      child: Container(
-                        width: 42,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.18),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    const Text(
-                      'Change Gmail',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 18,
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    Center(
-                      child: Obx(() {
-                        final profile = controller.profile;
-                        return Column(
-                          children: [
-                            Stack(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(3),
-                                  decoration: BoxDecoration(
-                                    gradient: const LinearGradient(
-                                      colors: [neon, sky],
-                                    ),
-                                    borderRadius: BorderRadius.circular(44),
-                                  ),
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(41),
-                                    child: SizedBox(
-                                      width: 82,
-                                      height: 82,
-                                      child:
-                                          profile.photoUrl.value.isNotEmpty
-                                              ? Image.network(
-                                                profile.photoUrl.value,
-                                                fit: BoxFit.cover,
-                                                errorBuilder:
-                                                    (_, __, ___) => Container(
-                                                      color: raised,
-                                                      child: const Icon(
-                                                        CupertinoIcons
-                                                            .person_fill,
-                                                        color: muted,
-                                                        size: 34,
-                                                      ),
-                                                    ),
-                                              )
-                                              : Container(
-                                                color: raised,
-                                                child: const Icon(
-                                                  CupertinoIcons.person_fill,
-                                                  color: muted,
-                                                  size: 34,
-                                                ),
-                                              ),
-                                    ),
-                                  ),
-                                ),
-                                Positioned(
-                                  right: 0,
-                                  bottom: 0,
-                                  child: GestureDetector(
-                                    onTap:
-                                        profile.isUploadingPhoto.value
-                                            ? null
-                                            : () =>
-                                                controller.changeProfileImage(),
-                                    child: Container(
-                                      width: 32,
-                                      height: 32,
-                                      decoration: BoxDecoration(
-                                        color: neon,
-                                        borderRadius: BorderRadius.circular(16),
-                                        border: Border.all(
-                                          color: card,
-                                          width: 2,
-                                        ),
-                                      ),
-                                      child:
-                                          profile.isUploadingPhoto.value
-                                              ? const Padding(
-                                                padding: EdgeInsets.all(7),
-                                                child:
-                                                    CircularProgressIndicator(
-                                                      strokeWidth: 2,
-                                                      color: ink,
-                                                    ),
-                                              )
-                                              : const Icon(
-                                                CupertinoIcons.camera_fill,
-                                                size: 15,
-                                                color: ink,
-                                              ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Change photo',
-                              style: TextStyle(
-                                color: neon,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ],
-                        );
-                      }),
-                    ),
-                    const SizedBox(height: 14),
-                    _sheetField(nameCtrl, 'Full Name', TextInputType.name),
-                    const SizedBox(height: 10),
-                    _sheetField(
-                      emailCtrl,
-                      'Gmail Address',
-                      TextInputType.emailAddress,
-                    ),
-                    const SizedBox(height: 10),
-                    ValueListenableBuilder<bool>(
-                      valueListenable: hideCurrentPassword,
-                      builder: (_, hidden, __) {
-                        return _sheetField(
-                          currentPasswordCtrl,
-                          'Current Password (required for Gmail change)',
-                          TextInputType.visiblePassword,
-                          obscureText: hidden,
-                          suffixIcon: IconButton(
-                            onPressed: () {
-                              hideCurrentPassword.value = !hidden;
-                            },
-                            icon: Icon(
-                              hidden
-                                  ? CupertinoIcons.eye
-                                  : CupertinoIcons.eye_slash,
-                              color: muted,
-                              size: 18,
+              child: Consumer(
+                builder: (context, ref, _) {
+                  final profileState = ref.watch(userProfileServiceProvider);
+                  final settingsState = ref.watch(settingsNotifierProvider);
+
+                  return SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Center(
+                          child: Container(
+                            width: 42,
+                            height: 4,
+                            decoration: BoxDecoration(
+                              color: _text(context).withOpacity(0.18),
+                              borderRadius: BorderRadius.circular(4),
                             ),
                           ),
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 14),
-                    Text(
-                      'For instant Gmail update, enter your current password.',
-                      style: TextStyle(color: muted, fontSize: 12),
-                    ),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      child: Obx(
-                        () => ElevatedButton(
-                          onPressed:
-                              controller.isSavingProfile.value
-                                  ? null
-                                  : () async {
-                                    final ok = await controller
+                        ),
+                        const SizedBox(height: 14),
+                        Text(
+                          'Change Gmail',
+                          style: TextStyle(
+                            color: _text(context),
+                            fontWeight: FontWeight.w800,
+                            fontSize: 18,
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        Center(
+                          child: Column(
+                            children: [
+                              Stack(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(3),
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        colors: [_neon(context), sky],
+                                      ),
+                                      borderRadius: BorderRadius.circular(44),
+                                    ),
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(41),
+                                      child: PremiumAvatar(
+                                        name: profileState.name,
+                                        customPhotoUrl: profileState.photoUrl,
+                                        size: 82,
+                                        borderRadius: 41,
+                                        isTrainer: false,
+                                      ),
+                                    ),
+                                  ),
+                                  Positioned(
+                                    right: 0,
+                                    bottom: 0,
+                                    child: GestureDetector(
+                                      onTap: profileState.isUploadingPhoto
+                                          ? null
+                                          : () => ref
+                                              .read(settingsNotifierProvider.notifier)
+                                              .changeProfileImage(context),
+                                      child: Container(
+                                        width: 32,
+                                        height: 32,
+                                        decoration: BoxDecoration(
+                                          color: _neon(context),
+                                          borderRadius: BorderRadius.circular(16),
+                                          border: Border.all(
+                                            color: _card(context),
+                                            width: 2,
+                                          ),
+                                        ),
+                                        child: profileState.isUploadingPhoto
+                                            ? Padding(
+                                                padding: const EdgeInsets.all(7),
+                                                child: CircularProgressIndicator(
+                                                  strokeWidth: 2,
+                                                  color: _ink(context),
+                                                ),
+                                              )
+                                            : Icon(
+                                                CupertinoIcons.camera_fill,
+                                                size: 15,
+                                                color: _ink(context),
+                                              ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Change photo',
+                                style: TextStyle(
+                                  color: _neon(context),
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        _sheetField(context, nameCtrl, 'Full Name', TextInputType.name),
+                        const SizedBox(height: 10),
+                        _sheetField(
+                          context,
+                          emailCtrl,
+                          'Gmail Address',
+                          TextInputType.emailAddress,
+                        ),
+                        const SizedBox(height: 10),
+                        ValueListenableBuilder<bool>(
+                          valueListenable: hideCurrentPassword,
+                          builder: (_, hidden, __) {
+                            return _sheetField(
+                              context,
+                              currentPasswordCtrl,
+                              'Current Password (required for Gmail change)',
+                              TextInputType.visiblePassword,
+                              obscureText: hidden,
+                              suffixIcon: IconButton(
+                                onPressed: () {
+                                  hideCurrentPassword.value = !hidden;
+                                },
+                                icon: Icon(
+                                  hidden
+                                      ? CupertinoIcons.eye
+                                      : CupertinoIcons.eye_slash,
+                                  color: _muted(context),
+                                  size: 18,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 14),
+                        Text(
+                          'For instant Gmail update, enter your current password.',
+                          style: TextStyle(color: _muted(context), fontSize: 12),
+                        ),
+                        const SizedBox(height: 16),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: settingsState.isSavingProfile
+                                ? null
+                                : () async {
+                                    final ok = await ref
+                                        .read(settingsNotifierProvider.notifier)
                                         .saveAccountIdentity(
+                                          context,
                                           fullName: nameCtrl.text,
                                           email: emailCtrl.text,
                                           currentPassword:
                                               currentPasswordCtrl.text,
                                         );
-                                    if (ok) {
-                                      Navigator.pop(context);
+                                    if (ok && context.mounted) {
+                                      Navigator.pop(sheetContext);
                                     }
                                   },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: neon,
-                            foregroundColor: ink,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: _neon(context),
+                              foregroundColor: _ink(context),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
                             ),
-                          ),
-                          child:
-                              controller.isSavingProfile.value
-                                  ? const SizedBox(
+                            child: settingsState.isSavingProfile
+                                ? SizedBox(
                                     width: 20,
                                     height: 20,
                                     child: CircularProgressIndicator(
                                       strokeWidth: 2,
-                                      color: ink,
+                                      color: _ink(context),
                                     ),
                                   )
-                                  : const Text(
+                                : const Text(
                                     'Save Changes',
                                     style: TextStyle(
                                       fontWeight: FontWeight.w700,
                                     ),
                                   ),
+                          ),
                         ),
-                      ),
+                      ],
                     ),
-                  ],
-                ),
+                  );
+                },
               ),
             ),
           ),
@@ -258,36 +247,38 @@ class SettingsView extends GetView<SettingsController> {
   }
 
   Widget _sheetField(
+    BuildContext context,
     TextEditingController controller,
     String hint,
     TextInputType type, {
     bool obscureText = false,
     Widget? suffixIcon,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return TextField(
       controller: controller,
       keyboardType: type,
       obscureText: obscureText,
-      style: const TextStyle(color: Colors.white),
+      style: TextStyle(color: _text(context)),
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: TextStyle(color: muted),
+        hintStyle: TextStyle(color: _muted(context)),
         suffixIcon: suffixIcon,
         filled: true,
-        fillColor: raised,
+        fillColor: _raised(context),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.white.withOpacity(0.16)),
+          borderSide: BorderSide(color: isDark ? Colors.white.withOpacity(0.16) : Colors.black.withOpacity(0.12)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: neon),
+          borderSide: BorderSide(color: Theme.of(context).colorScheme.primary),
         ),
       ),
     );
   }
 
-  Future<void> _showChangePasswordSheet(BuildContext context) async {
+  Future<void> _showChangePasswordSheet(BuildContext context, WidgetRef ref) async {
     final currentCtrl = TextEditingController();
     final newCtrl = TextEditingController();
     final confirmCtrl = TextEditingController();
@@ -300,180 +291,347 @@ class SettingsView extends GetView<SettingsController> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder:
-          (_) => Padding(
+          (sheetContext) => Padding(
             padding: EdgeInsets.only(
-              bottom: MediaQuery.of(context).viewInsets.bottom,
+              bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
             ),
             child: Container(
-              decoration: const BoxDecoration(
-                color: card,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              decoration: BoxDecoration(
+                color: _card(context),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
               ),
               padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Center(
-                      child: Container(
-                        width: 42,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.18),
-                          borderRadius: BorderRadius.circular(4),
+              child: Consumer(
+                builder: (context, ref, _) {
+                  final settingsState = ref.watch(settingsNotifierProvider);
+
+                  return SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Center(
+                          child: Container(
+                            width: 42,
+                            height: 4,
+                            decoration: BoxDecoration(
+                              color: _text(context).withOpacity(0.18),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    const Text(
-                      'Change Password',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 18,
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    ValueListenableBuilder<bool>(
-                      valueListenable: hideCurrent,
-                      builder: (_, hidden, __) {
-                        return _sheetField(
-                          currentCtrl,
-                          'Current Password',
-                          TextInputType.visiblePassword,
-                          obscureText: hidden,
-                          suffixIcon: IconButton(
-                            onPressed: () => hideCurrent.value = !hidden,
-                            icon: Icon(
-                              hidden
-                                  ? CupertinoIcons.eye
-                                  : CupertinoIcons.eye_slash,
-                              color: muted,
-                              size: 18,
-                            ),
+                        const SizedBox(height: 14),
+                        Text(
+                          'Change Password',
+                          style: TextStyle(
+                            color: _text(context),
+                            fontWeight: FontWeight.w800,
+                            fontSize: 18,
                           ),
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 10),
-                    ValueListenableBuilder<bool>(
-                      valueListenable: hideNew,
-                      builder: (_, hidden, __) {
-                        return _sheetField(
-                          newCtrl,
-                          'New Password',
-                          TextInputType.visiblePassword,
-                          obscureText: hidden,
-                          suffixIcon: IconButton(
-                            onPressed: () => hideNew.value = !hidden,
-                            icon: Icon(
-                              hidden
-                                  ? CupertinoIcons.eye
-                                  : CupertinoIcons.eye_slash,
-                              color: muted,
-                              size: 18,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 10),
-                    ValueListenableBuilder<bool>(
-                      valueListenable: hideConfirm,
-                      builder: (_, hidden, __) {
-                        return _sheetField(
-                          confirmCtrl,
-                          'Confirm New Password',
-                          TextInputType.visiblePassword,
-                          obscureText: hidden,
-                          suffixIcon: IconButton(
-                            onPressed: () => hideConfirm.value = !hidden,
-                            icon: Icon(
-                              hidden
-                                  ? CupertinoIcons.eye
-                                  : CupertinoIcons.eye_slash,
-                              color: muted,
-                              size: 18,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      child: Obx(
-                        () => ElevatedButton(
-                          onPressed:
-                              controller.isSavingPassword.value
-                                  ? null
-                                  : () async {
-                                    final ok = await controller
+                        ),
+                        const SizedBox(height: 14),
+                        ValueListenableBuilder<bool>(
+                          valueListenable: hideCurrent,
+                          builder: (_, hidden, __) {
+                            return _sheetField(
+                              context,
+                              currentCtrl,
+                              'Current Password',
+                              TextInputType.visiblePassword,
+                              obscureText: hidden,
+                              suffixIcon: IconButton(
+                                onPressed: () => hideCurrent.value = !hidden,
+                                icon: Icon(
+                                  hidden
+                                      ? CupertinoIcons.eye
+                                      : CupertinoIcons.eye_slash,
+                                  color: _muted(context),
+                                  size: 18,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 10),
+                        ValueListenableBuilder<bool>(
+                          valueListenable: hideNew,
+                          builder: (_, hidden, __) {
+                            return _sheetField(
+                              context,
+                              newCtrl,
+                              'New Password',
+                              TextInputType.visiblePassword,
+                              obscureText: hidden,
+                              suffixIcon: IconButton(
+                                onPressed: () => hideNew.value = !hidden,
+                                icon: Icon(
+                                  hidden
+                                      ? CupertinoIcons.eye
+                                      : CupertinoIcons.eye_slash,
+                                  color: _muted(context),
+                                  size: 18,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 10),
+                        ValueListenableBuilder<bool>(
+                          valueListenable: hideConfirm,
+                          builder: (_, hidden, __) {
+                            return _sheetField(
+                              context,
+                              confirmCtrl,
+                              'Confirm New Password',
+                              TextInputType.visiblePassword,
+                              obscureText: hidden,
+                              suffixIcon: IconButton(
+                                onPressed: () => hideConfirm.value = !hidden,
+                                icon: Icon(
+                                  hidden
+                                      ? CupertinoIcons.eye
+                                      : CupertinoIcons.eye_slash,
+                                  color: _muted(context),
+                                  size: 18,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: settingsState.isSavingPassword
+                                ? null
+                                : () async {
+                                    final ok = await ref
+                                        .read(settingsNotifierProvider.notifier)
                                         .updatePasswordRealtime(
+                                          context,
                                           currentPassword: currentCtrl.text,
                                           newPassword: newCtrl.text,
                                           confirmPassword: confirmCtrl.text,
                                         );
-                                    if (ok) {
-                                      Navigator.pop(context);
+                                    if (ok && context.mounted) {
+                                      Navigator.pop(sheetContext);
                                     }
                                   },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: neon,
-                            foregroundColor: ink,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: _neon(context),
+                              foregroundColor: _ink(context),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
                             ),
-                          ),
-                          child:
-                              controller.isSavingPassword.value
-                                  ? const SizedBox(
+                            child: settingsState.isSavingPassword
+                                ? SizedBox(
                                     width: 20,
                                     height: 20,
                                     child: CircularProgressIndicator(
                                       strokeWidth: 2,
-                                      color: ink,
+                                      color: _ink(context),
                                     ),
                                   )
-                                  : const Text(
+                                : const Text(
                                     'Update Password',
                                     style: TextStyle(
                                       fontWeight: FontWeight.w700,
                                     ),
                                   ),
+                          ),
                         ),
-                      ),
+                      ],
                     ),
-                  ],
-                ),
+                  );
+                },
               ),
             ),
           ),
     );
   }
 
+  Future<void> _showLogoutDialog(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder:
+          (_) => AlertDialog(
+            backgroundColor: _card(context),
+            title: Text('Log Out', style: TextStyle(color: _text(context))),
+            content: Text(
+              'Are you sure you want to log out?',
+              style: TextStyle(color: _muted(context)),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: Text(
+                  'Cancel',
+                  style: TextStyle(color: _muted(context)),
+                ),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text(
+                  'Log Out',
+                  style: TextStyle(color: Color(0xFFFF4F4F)),
+                ),
+              ),
+            ],
+          ),
+    );
+    if (confirmed == true) {
+      await ref.read(settingsNotifierProvider.notifier).logout();
+    }
+  }
+
+  Future<void> _showSupportDialog(BuildContext context, WidgetRef ref) async {
+    final subjectCtrl = TextEditingController();
+    final messageCtrl = TextEditingController();
+
+    final submitted = await showDialog<bool>(
+      context: context,
+      builder:
+          (_) => AlertDialog(
+            backgroundColor: _card(context),
+            title: Text(
+              'Contact Support',
+              style: TextStyle(color: _text(context)),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: subjectCtrl,
+                  style: TextStyle(color: _text(context)),
+                  decoration: InputDecoration(
+                    hintText: 'Subject',
+                    hintStyle: TextStyle(color: _muted(context)),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: messageCtrl,
+                  maxLines: 4,
+                  style: TextStyle(color: _text(context)),
+                  decoration: InputDecoration(
+                    hintText: 'Describe your issue',
+                    hintStyle: TextStyle(color: _muted(context)),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: Text(
+                  'Cancel',
+                  style: TextStyle(color: _muted(context)),
+                ),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: Text(
+                  'Submit',
+                  style: TextStyle(color: _neon(context)),
+                ),
+              ),
+            ],
+          ),
+    );
+
+    if (submitted == true) {
+      await ref.read(settingsNotifierProvider.notifier).submitSupportTicket(
+            context,
+            subject: subjectCtrl.text,
+            message: messageCtrl.text,
+          );
+    }
+  }
+
+  Future<void> _showDeleteAccountDialog(BuildContext context, WidgetRef ref) async {
+    final reasonCtrl = TextEditingController();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder:
+          (_) => AlertDialog(
+            backgroundColor: _card(context),
+            title: Text(
+              'Delete Account',
+              style: TextStyle(color: _text(context)),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Your request will be reviewed by support before permanent deletion.',
+                  style: TextStyle(color: _muted(context)),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: reasonCtrl,
+                  maxLines: 3,
+                  style: TextStyle(color: _text(context)),
+                  decoration: InputDecoration(
+                    hintText: 'Reason for deletion',
+                    hintStyle: TextStyle(color: _muted(context)),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: Text(
+                  'Cancel',
+                  style: TextStyle(color: _muted(context)),
+                ),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text(
+                  'Submit Request',
+                  style: TextStyle(color: Color(0xFFFF4F4F)),
+                ),
+              ),
+            ],
+          ),
+    );
+
+    if (confirmed == true) {
+      await ref.read(settingsNotifierProvider.notifier).deleteAccount(
+            context,
+            reason: reasonCtrl.text,
+          );
+    }
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(settingsNotifierProvider);
+    final notifier = ref.read(settingsNotifierProvider.notifier);
+
     return Scaffold(
-      backgroundColor: ink,
+      backgroundColor: _ink(context),
       extendBodyBehindAppBar: true,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(CupertinoIcons.back, color: Colors.white),
-          onPressed: () => Get.back(),
+          icon: Icon(CupertinoIcons.back, color: _text(context)),
+          onPressed: () => context.pop(),
         ),
         centerTitle: true,
-        title: const Text(
+        title: Text(
           'Settings',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+          style: TextStyle(color: _text(context), fontWeight: FontWeight.w600),
         ),
       ),
       body: Stack(
         children: [
-          Positioned.fill(child: trainerBackground()),
+          Positioned.fill(child: trainerBackground(context)),
           ListView(
             padding: EdgeInsets.fromLTRB(
               20,
@@ -484,114 +642,154 @@ class SettingsView extends GetView<SettingsController> {
             physics: const BouncingScrollPhysics(),
             children: [
               // ── Profile section ────────────
-              _buildUserCard(context),
+              _buildUserCard(context, ref),
               const SizedBox(height: 28),
 
               // ── Preferences ───────────────
-              _buildSectionHeader('Preferences'),
+              _buildSectionHeader(context, 'Preferences'),
               const SizedBox(height: 10),
               _buildCard(
+                context,
                 children: [
-                  Obx(
-                    () => _buildToggle(
-                      icon: CupertinoIcons.bell_fill,
-                      iconColor: sky,
-                      label: 'Push Notifications',
-                      subtitle: 'Session reminders & updates',
-                      value: controller.notificationsEnabled.value,
-                      onChanged: controller.toggleNotifications,
-                    ),
+                  _buildToggle(
+                    context,
+                    ref,
+                    icon: CupertinoIcons.moon_fill,
+                    iconColor: lilac,
+                    label: 'Dark Mode',
+                    subtitle: 'Switch between light and dark themes',
+                    value: ref.watch(themeProvider) == ThemeMode.dark,
+                    onChanged: (val) => ref.read(themeProvider.notifier).toggleTheme(),
                   ),
-                  _buildDivider(),
-                  Obx(
-                    () => _buildToggle(
-                      icon: CupertinoIcons.envelope_fill,
-                      iconColor: lilac,
-                      label: 'Email Updates',
-                      subtitle: 'Weekly summaries & offers',
-                      value: controller.emailUpdatesEnabled.value,
-                      onChanged: controller.toggleEmailUpdates,
+                  _buildDivider(context),
+                  _buildArrowRow(
+                    context,
+                    icon: CupertinoIcons.paintbrush_fill,
+                    iconColor: ref.watch(appearanceProvider).accentColor.color(context),
+                    label: 'Appearance & Display',
+                    trailing: Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: Text(
+                        '${ref.watch(appearanceProvider).accentColor.name} • ${ref.watch(appearanceProvider).fontSize.name}',
+                        style: TextStyle(
+                          color: ref.watch(appearanceProvider).accentColor.color(context),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ),
+                    onTap: () => context.push(Routes.APPEARANCE),
                   ),
-                  _buildDivider(),
-                  Obx(
-                    () => _buildToggle(
-                      icon: CupertinoIcons.hand_thumbsup_fill,
-                      iconColor: neon,
-                      label: 'Biometric Login',
-                      subtitle: 'Use Face ID or fingerprint',
-                      value: controller.biometricsEnabled.value,
-                      onChanged: controller.toggleBiometrics,
-                    ),
+                  _buildDivider(context),
+                  _buildToggle(
+                    context,
+                    ref,
+                    icon: CupertinoIcons.bell_fill,
+                    iconColor: sky,
+                    label: 'Push Notifications',
+                    subtitle: 'Session reminders & updates',
+                    value: state.notificationsEnabled,
+                    onChanged: (val) => notifier.toggleNotifications(context, val),
+                  ),
+                  _buildDivider(context),
+                  _buildToggle(
+                    context,
+                    ref,
+                    icon: CupertinoIcons.envelope_fill,
+                    iconColor: lilac,
+                    label: 'Email Updates',
+                    subtitle: 'Weekly summaries & offers',
+                    value: state.emailUpdatesEnabled,
+                    onChanged: (val) => notifier.toggleEmailUpdates(context, val),
+                  ),
+                  _buildDivider(context),
+                  _buildToggle(
+                    context,
+                    ref,
+                    icon: CupertinoIcons.hand_thumbsup_fill,
+                    iconColor: _neon(context),
+                    label: 'Biometric Login',
+                    subtitle: 'Use Face ID or fingerprint',
+                    value: state.biometricsEnabled,
+                    onChanged: (val) => notifier.toggleBiometrics(context, val),
                   ),
                 ],
               ),
               const SizedBox(height: 24),
 
               // ── Account ───────────────────
-              _buildSectionHeader('Account'),
+              _buildSectionHeader(context, 'Account'),
               const SizedBox(height: 10),
               _buildCard(
+                context,
                 children: [
                   _buildArrowRow(
+                    context,
                     icon: CupertinoIcons.pencil,
                     iconColor: sky,
                     label: 'Change Gmail',
-                    onTap: () => _showEditProfileSheet(context),
+                    onTap: () => _showEditProfileSheet(context, ref),
                   ),
-                  _buildDivider(),
+                  _buildDivider(context),
                   _buildArrowRow(
+                    context,
                     icon: CupertinoIcons.lock_fill,
                     iconColor: lilac,
                     label: 'Change Password',
-                    onTap: () => _showChangePasswordSheet(context),
+                    onTap: () => _showChangePasswordSheet(context, ref),
                   ),
-                  _buildDivider(),
+                  _buildDivider(context),
                   _buildArrowRow(
+                    context,
                     icon: CupertinoIcons.creditcard_fill,
-                    iconColor: neon,
+                    iconColor: _neon(context),
                     label: 'Payment Methods',
-                    onTap: controller.openPaymentMethods,
+                    onTap: () => context.push(Routes.WALLET),
                   ),
                 ],
               ),
               const SizedBox(height: 24),
 
               // ── About ─────────────────────
-              _buildSectionHeader('About'),
+              _buildSectionHeader(context, 'About'),
               const SizedBox(height: 10),
               _buildCard(
+                context,
                 children: [
                   _buildArrowRow(
+                    context,
                     icon: CupertinoIcons.info_circle_fill,
                     iconColor: sky,
                     label: 'App Version',
-                    trailing: const Text(
+                    trailing: Text(
                       '1.0.0',
-                      style: TextStyle(color: muted, fontSize: 13),
+                      style: TextStyle(color: _muted(context), fontSize: 13),
                     ),
-                    onTap: controller.openAppVersion,
+                    onTap: () => notifier.openAppVersion(context),
                   ),
-                  _buildDivider(),
+                  _buildDivider(context),
                   _buildArrowRow(
+                    context,
                     icon: CupertinoIcons.doc_text_fill,
                     iconColor: lilac,
                     label: 'Privacy Policy',
-                    onTap: controller.openPrivacyPolicy,
+                    onTap: () => notifier.openPrivacyPolicy(context),
                   ),
-                  _buildDivider(),
+                  _buildDivider(context),
                   _buildArrowRow(
+                    context,
                     icon: CupertinoIcons.doc_plaintext,
                     iconColor: muted,
                     label: 'Terms of Service',
-                    onTap: controller.openTermsOfService,
+                    onTap: () => notifier.openTermsOfService(context),
                   ),
-                  _buildDivider(),
+                  _buildDivider(context),
                   _buildArrowRow(
+                    context,
                     icon: CupertinoIcons.question_circle_fill,
                     iconColor: sky,
                     label: 'Help & Support',
-                    onTap: controller.openSupportCenter,
+                    onTap: () => _showSupportDialog(context, ref),
                   ),
                 ],
               ),
@@ -599,23 +797,26 @@ class SettingsView extends GetView<SettingsController> {
 
               // ── Danger Zone ───────────────
               _buildCard(
+                context,
                 children: [
                   _buildArrowRow(
+                    context,
                     icon: CupertinoIcons.square_arrow_right,
                     iconColor: coral,
                     label: 'Log Out',
                     labelColor: coral,
                     showChevron: false,
-                    onTap: controller.logout,
+                    onTap: () => _showLogoutDialog(context, ref),
                   ),
-                  _buildDivider(),
+                  _buildDivider(context),
                   _buildArrowRow(
+                    context,
                     icon: CupertinoIcons.trash_fill,
                     iconColor: coral,
                     label: 'Delete Account',
                     labelColor: coral,
                     showChevron: false,
-                    onTap: controller.deleteAccount,
+                    onTap: () => _showDeleteAccountDialog(context, ref),
                   ),
                 ],
               ),
@@ -627,82 +828,73 @@ class SettingsView extends GetView<SettingsController> {
     );
   }
 
-  Widget _buildUserCard(BuildContext context) {
-    return Obx(() {
-      final p = controller.profile;
-      return GestureDetector(
-        onTap: () => _showEditProfileSheet(context),
-        child: LiquidTile(
-          radius: 16,
-          padding: const EdgeInsets.all(16),
-          accent: kLilac,
-          child: Row(
-            children: [
-              Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  color: lilac.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: lilac.withOpacity(0.3)),
+  Widget _buildUserCard(BuildContext context, WidgetRef ref) {
+    final p = ref.watch(userProfileServiceProvider);
+
+    return GestureDetector(
+      onTap: () => _showEditProfileSheet(context, ref),
+      child: LiquidTile(
+        radius: 16,
+        padding: const EdgeInsets.all(16),
+        accent: kLilac,
+        child: Row(
+          children: [
+            Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [_neon(context), sky],
                 ),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(2), // border border-width
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(14),
-                  child:
-                      p.photoUrl.value.isNotEmpty
-                          ? Image.network(
-                            p.photoUrl.value,
-                            fit: BoxFit.cover,
-                            errorBuilder:
-                                (_, __, ___) => const Icon(
-                                  CupertinoIcons.person_fill,
-                                  color: lilac,
-                                  size: 28,
-                                ),
-                          )
-                          : const Icon(
-                            CupertinoIcons.person_fill,
-                            color: lilac,
-                            size: 28,
-                          ),
+                  child: PremiumAvatar(
+                    name: p.name,
+                    customPhotoUrl: p.photoUrl,
+                    size: 52,
+                    borderRadius: 14,
+                    isTrainer: false,
+                  ),
                 ),
               ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      p.name.value,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 16,
-                      ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    p.name,
+                    style: TextStyle(
+                      color: _text(context),
+                      fontWeight: FontWeight.w700,
+                      fontSize: 16,
                     ),
-                    const SizedBox(height: 3),
-                    Text(
-                      p.email.value.isNotEmpty
-                          ? p.email.value
-                          : 'No email linked',
-                      style: TextStyle(color: muted, fontSize: 13),
-                    ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    p.email.isNotEmpty ? p.email : 'No email linked',
+                    style: TextStyle(color: _muted(context), fontSize: 13),
+                  ),
+                ],
               ),
-              Icon(CupertinoIcons.pencil, color: muted, size: 18),
-            ],
-          ),
+            ),
+            Icon(CupertinoIcons.pencil, color: _muted(context), size: 18),
+          ],
         ),
-      );
-    });
+      ),
+    );
   }
 
-  Widget _buildSectionHeader(String label) {
+  Widget _buildSectionHeader(BuildContext context, String label) {
     return Text(
       label,
       style: TextStyle(
-        color: muted,
+        color: _muted(context),
         fontSize: 12,
         fontWeight: FontWeight.w600,
         letterSpacing: 0.8,
@@ -710,7 +902,7 @@ class SettingsView extends GetView<SettingsController> {
     );
   }
 
-  Widget _buildCard({required List<Widget> children}) {
+  Widget _buildCard(BuildContext context, {required List<Widget> children}) {
     return LiquidTile(
       radius: 16,
       padding: EdgeInsets.zero,
@@ -719,13 +911,15 @@ class SettingsView extends GetView<SettingsController> {
     );
   }
 
-  Widget _buildDivider() => Container(
-    height: 1,
-    margin: const EdgeInsets.only(left: 56),
-    color: Colors.white.withOpacity(0.12),
-  );
+  Widget _buildDivider(BuildContext context) => Container(
+        height: 1,
+        margin: const EdgeInsets.only(left: 56),
+        color: _divider(context),
+      );
 
-  Widget _buildToggle({
+  Widget _buildToggle(
+    BuildContext context,
+    WidgetRef ref, {
     required IconData icon,
     required Color iconColor,
     required String label,
@@ -753,36 +947,38 @@ class SettingsView extends GetView<SettingsController> {
               children: [
                 Text(
                   label,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: _text(context),
                     fontWeight: FontWeight.w500,
                     fontSize: 14,
                   ),
                 ),
-                Text(subtitle, style: TextStyle(color: muted, fontSize: 11)),
+                Text(subtitle, style: TextStyle(color: _muted(context), fontSize: 11)),
               ],
             ),
           ),
           CupertinoSwitch(
             value: value,
             onChanged: onChanged,
-            activeColor: neon,
-            trackColor: raised,
+            activeColor: _neon(context),
+            trackColor: _raised(context),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildArrowRow({
+  Widget _buildArrowRow(
+    BuildContext context, {
     required IconData icon,
     required Color iconColor,
     required String label,
     required VoidCallback onTap,
-    Color labelColor = Colors.white,
+    Color? labelColor,
     bool showChevron = true,
     Widget? trailing,
   }) {
+    final effectiveLabelColor = labelColor ?? _text(context);
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
@@ -804,15 +1000,14 @@ class SettingsView extends GetView<SettingsController> {
               child: Text(
                 label,
                 style: TextStyle(
-                  color: labelColor,
+                  color: effectiveLabelColor,
                   fontWeight: FontWeight.w500,
                   fontSize: 14,
                 ),
               ),
             ),
             if (trailing != null) trailing,
-            if (showChevron)
-              Icon(CupertinoIcons.chevron_right, color: muted, size: 16),
+            if (showChevron) Icon(CupertinoIcons.chevron_right, color: _muted(context), size: 16),
           ],
         ),
       ),

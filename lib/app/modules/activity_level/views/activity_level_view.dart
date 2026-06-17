@@ -1,23 +1,52 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
-
-import '../controllers/activity_level_controller.dart';
 import '../../../../config/glass_ui.dart';
+import '../../../providers/global_providers.dart';
+import '../../../routes/app_router.dart' show Routes;
 
-// ─── Design Tokens (matching home_view) ────────────────────────────────────
-class ActivityLevelView extends GetView<ActivityLevelController> {
+final selectedActivityLevelProvider = StateProvider<String?>((ref) => null);
+
+final _activityLevelsList = const [
+  {
+    'id': 'sedentary',
+    'label': 'Sedentary',
+    'description': 'Little or no exercise',
+  },
+  {
+    'id': 'lightly_active',
+    'label': 'Lightly Active',
+    'description': '1-3 days per week',
+  },
+  {
+    'id': 'moderately_active',
+    'label': 'Moderately Active',
+    'description': '3-5 days per week',
+  },
+  {
+    'id': 'very_active',
+    'label': 'Very Active',
+    'description': '6-7 days per week',
+  },
+];
+
+class ActivityLevelView extends ConsumerWidget {
   const ActivityLevelView({Key? key}) : super(key: key);
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final selectedLevel = ref.watch(selectedActivityLevelProvider);
+    // Dynamic accent colour — follows the user's chosen theme.
+    final kNeon = Theme.of(context).colorScheme.primary;
+
     return Scaffold(
       backgroundColor: kInk,
       extendBodyBehindAppBar: true,
       appBar: glassAppBar(
         title: 'Activity Level',
-        onBack: () => controller.goBack(),
+        onBack: () => context.go(Routes.FITNESS_GOAL),
       ),
       body: Stack(
         children: [
@@ -31,7 +60,7 @@ class ActivityLevelView extends GetView<ActivityLevelController> {
                   const SizedBox(height: 24),
                   ShaderMask(
                     shaderCallback:
-                        (b) => const LinearGradient(
+                        (b) => LinearGradient(
                           colors: [kCoral, kNeon],
                         ).createShader(b),
                     child: Text(
@@ -52,81 +81,68 @@ class ActivityLevelView extends GetView<ActivityLevelController> {
                   Expanded(
                     child: ListView.builder(
                       physics: const BouncingScrollPhysics(),
-                      itemCount: controller.levels.length,
+                      itemCount: _activityLevelsList.length,
                       itemBuilder: (context, index) {
-                        final level = controller.levels[index];
-                        return Obx(() {
-                          final isSelected =
-                              controller.selectedLevel.value == level['id'];
-                          return GestureDetector(
-                            onTap:
-                                () => controller.selectLevel(
-                                  level['id'] as String,
-                                ),
-                            child: Padding(
-                              padding: const EdgeInsets.only(bottom: 12),
-                              child: LiquidTile(
-                                selected: isSelected,
-                                accent: kCoral,
-                                child: Row(
-                                  children: [
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            level['label'] as String,
-                                            style: GoogleFonts.dmSans(
-                                              fontSize: 15,
-                                              fontWeight: FontWeight.w600,
-                                              color:
-                                                  isSelected
-                                                      ? kCoral
-                                                      : Colors.white,
-                                            ),
+                        final level = _activityLevelsList[index];
+                        final isSelected = selectedLevel == level['id'];
+                        return GestureDetector(
+                          onTap: () => ref.read(selectedActivityLevelProvider.notifier).state = level['id'] as String,
+                          child: Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: LiquidTile(
+                              selected: isSelected,
+                              accent: kCoral,
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          level['label'] as String,
+                                          style: GoogleFonts.dmSans(
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w600,
+                                            color: isSelected ? kCoral : Colors.white,
                                           ),
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            level['description'] as String,
-                                            style: GoogleFonts.dmSans(
-                                              fontSize: 12,
-                                              color: kMuted,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Container(
-                                      width: 22,
-                                      height: 22,
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        border: Border.all(
-                                          color: isSelected ? kCoral : kMuted,
-                                          width: 2,
                                         ),
-                                        color:
-                                            isSelected
-                                                ? kCoral
-                                                : Colors.transparent,
-                                      ),
-                                      child:
-                                          isSelected
-                                              ? const Icon(
-                                                Icons.check,
-                                                color: kInk,
-                                                size: 14,
-                                              )
-                                              : null,
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          level['description'] as String,
+                                          style: GoogleFonts.dmSans(
+                                            fontSize: 12,
+                                            color: kMuted,
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                  ],
-                                ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Container(
+                                    width: 22,
+                                    height: 22,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: isSelected ? kCoral : kMuted,
+                                        width: 2,
+                                      ),
+                                      color: isSelected ? kCoral : Colors.transparent,
+                                    ),
+                                    child: isSelected
+                                        ? const Icon(
+                                            Icons.check,
+                                            color: kInk,
+                                            size: 14,
+                                          )
+                                        : null,
+                                  ),
+                                ],
                               ),
                             ),
-                          );
-                        });
+                          ),
+                        );
                       },
                     ),
                   ),
@@ -134,7 +150,21 @@ class ActivityLevelView extends GetView<ActivityLevelController> {
                   neonButton(
                     label: 'Continue',
                     accent: kCoral,
-                    onPressed: () => controller.nextStep(),
+                    onPressed: () {
+                      final selected = ref.read(selectedActivityLevelProvider);
+                      if (selected != null) {
+                        final label = _activityLevelsList.firstWhere(
+                          (l) => l['id'] == selected,
+                          orElse: () => {'label': selected},
+                        )['label'] as String;
+                        ref.read(userProfileServiceProvider.notifier).setActivityLevel(label);
+                        context.go(Routes.FITNESS_LEVEL);
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Please select your activity level')),
+                        );
+                      }
+                    },
                   ),
                   const SizedBox(height: 28),
                 ],

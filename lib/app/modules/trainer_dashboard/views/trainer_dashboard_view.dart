@@ -1,23 +1,121 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:math';
 
 import '../../../../config/glass_ui.dart';
 import '../controllers/trainer_dashboard_controller.dart';
+import '../../../providers/rx_compat.dart';
+import '../../home/views/post_comments_sheet.dart';
+import '../../notifications/controllers/notifications_controller.dart';
+import '../../../services/post_interaction_service.dart';
+import '../../messaging/views/messaging_screen.dart';
 
-class TrainerDashboardView extends GetView<TrainerDashboardController> {
-  const TrainerDashboardView({super.key});
+class TrainerDashboardView extends ConsumerStatefulWidget {
+  final String? autoOpenPostId;
+  final String? autoOpenTrainerName;
+  final String? initialTab;
+
+  const TrainerDashboardView({
+    super.key,
+    this.autoOpenPostId,
+    this.autoOpenTrainerName,
+    this.initialTab,
+  });
+
+  @override
+  ConsumerState<TrainerDashboardView> createState() => _TrainerDashboardViewState();
+}
+
+class _TrainerDashboardViewState extends ConsumerState<TrainerDashboardView> {
+  TrainerDashboardController get controller => ref.watch(trainerDashboardProvider);
+  Color get kNeon => Theme.of(context).colorScheme.primary;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialTab != null) {
+      _applyTab();
+    }
+    if (widget.autoOpenPostId != null && widget.autoOpenPostId!.isNotEmpty) {
+      _openComments();
+    }
+  }
+
+  void _applyTab() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      switch (widget.initialTab?.toLowerCase()) {
+        case 'bookings':
+          controller.currentTabIndex.value = 1;
+          break;
+        case 'availability':
+          controller.currentTabIndex.value = 2;
+          break;
+        case 'payouts':
+        case 'earnings':
+          controller.currentTabIndex.value = 3;
+          break;
+        case 'messages':
+          controller.currentTabIndex.value = 4;
+          break;
+        case 'posts':
+          controller.currentTabIndex.value = 5;
+          break;
+        case 'studio':
+        default:
+          controller.currentTabIndex.value = 0;
+          break;
+      }
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant TrainerDashboardView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initialTab != null && widget.initialTab != oldWidget.initialTab) {
+      _applyTab();
+    }
+    if (widget.autoOpenPostId != null &&
+        widget.autoOpenPostId!.isNotEmpty &&
+        widget.autoOpenPostId != oldWidget.autoOpenPostId) {
+      _openComments();
+    }
+  }
+
+  void _openComments() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Switch to Posts tab (index 5)
+      controller.currentTabIndex.value = 5;
+
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (context) => PostCommentsSheet(
+          postId: widget.autoOpenPostId!,
+          trainerName: widget.autoOpenTrainerName ?? controller.displayName.value,
+        ),
+      );
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
+    final notifState = ref.watch(notificationsNotifierProvider);
+    final unreadCount = notifState.unreadCount;
+
     final iconList = [
       CupertinoIcons.square_grid_2x2_fill,
       CupertinoIcons.checkmark_seal_fill,
       CupertinoIcons.calendar_today,
       CupertinoIcons.money_dollar_circle_fill,
-      CupertinoIcons.star_fill,
+      CupertinoIcons.chat_bubble_fill,
       CupertinoIcons.photo_on_rectangle,
     ];
     final labelList = [
@@ -25,7 +123,7 @@ class TrainerDashboardView extends GetView<TrainerDashboardController> {
       'Bookings',
       'Availability',
       'Payouts',
-      'Reviews',
+      'Messages',
       'Posts',
     ];
     final pages = [
@@ -33,7 +131,7 @@ class TrainerDashboardView extends GetView<TrainerDashboardController> {
       _BookingsTab(controller: controller),
       _AvailabilityTab(controller: controller),
       _EarningsTab(controller: controller),
-      _ReviewsTab(controller: controller),
+      const MessagingScreen(),
       _PostsTab(controller: controller),
     ];
 
@@ -52,8 +150,43 @@ class TrainerDashboardView extends GetView<TrainerDashboardController> {
           ),
         ),
         actions: [
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              IconButton(
+                onPressed: () => context.push('/notifications'),
+                icon: const Icon(CupertinoIcons.bell, color: Colors.white),
+                tooltip: 'Notifications',
+              ),
+              if (unreadCount > 0)
+                Positioned(
+                  right: 8,
+                  top: 8,
+                  child: Container(
+                    padding: const EdgeInsets.all(3.5),
+                    decoration: const BoxDecoration(
+                      color: kCoral,
+                      shape: BoxShape.circle,
+                    ),
+                    constraints: const BoxConstraints(
+                      minWidth: 16,
+                      minHeight: 16,
+                    ),
+                    child: Text(
+                      unreadCount.toString(),
+                      style: GoogleFonts.dmSans(
+                        color: Colors.white,
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+            ],
+          ),
           IconButton(
-            onPressed: controller.logout,
+            onPressed: () => _showLogoutDialog(context),
             icon: const Icon(Icons.logout_rounded, color: Colors.white),
             tooltip: 'Logout',
           ),
@@ -64,7 +197,7 @@ class TrainerDashboardView extends GetView<TrainerDashboardController> {
           Positioned.fill(child: trainerBackground()),
           Obx(() {
             if (controller.isLoading.value) {
-              return const Center(
+              return Center(
                 child: CircularProgressIndicator(color: kNeon),
               );
             }
@@ -147,6 +280,67 @@ class TrainerDashboardView extends GetView<TrainerDashboardController> {
       ),
     );
   }
+
+  void _showLogoutDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1620),
+        title: Text(
+          'Logout',
+          style: GoogleFonts.dmSans(
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            color: Colors.white,
+          ),
+        ),
+        content: Text(
+          'Are you sure you want to logout?',
+          style: GoogleFonts.dmSans(
+            fontSize: 14,
+            color: const Color(0xFFB8B8C8),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              'Cancel',
+              style: GoogleFonts.dmSans(
+                fontWeight: FontWeight.w600,
+                color: const Color(0xFF38C9FF),
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              controller.logout();
+            },
+            child: Text(
+              'Logout',
+              style: GoogleFonts.dmSans(
+                fontWeight: FontWeight.w600,
+                color: const Color(0xFFFF4F4F),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class Obx extends ConsumerWidget {
+  final Widget Function() builder;
+  const Obx(this.builder, {super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(trainerDashboardProvider);
+    return builder();
+  }
 }
 
 class _OverviewTab extends StatelessWidget {
@@ -154,8 +348,49 @@ class _OverviewTab extends StatelessWidget {
 
   final TrainerDashboardController controller;
 
+  void _showReviewsBottomSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF111118),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) => SizedBox(
+        height: MediaQuery.of(context).size.height * 0.75,
+        child: Column(
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.white24,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Ratings & Reviews',
+              style: GoogleFonts.dmSans(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: 16,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: _ReviewsTab(controller: controller),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final kNeon = Theme.of(context).colorScheme.primary;
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       children: [
@@ -175,13 +410,14 @@ class _OverviewTab extends StatelessWidget {
                         width: 56,
                         height: 56,
                         decoration: BoxDecoration(
-                          shape: BoxShape.circle,
+                          borderRadius: BorderRadius.circular(16),
                           border: Border.all(
                             color: kNeon.withValues(alpha: 0.5),
                           ),
                           color: kNeon.withValues(alpha: 0.18),
                         ),
-                        child: ClipOval(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(14.5),
                           child:
                               photoUrl.isNotEmpty
                                   ? CachedNetworkImage(
@@ -193,12 +429,12 @@ class _OverviewTab extends StatelessWidget {
                                       milliseconds: 120,
                                     ),
                                     errorWidget:
-                                        (_, __, ___) => const Icon(
+                                        (_, __, ___) => Icon(
                                           Icons.fitness_center_rounded,
                                           color: kNeon,
                                         ),
                                   )
-                                  : const Icon(
+                                  : Icon(
                                     Icons.fitness_center_rounded,
                                     color: kNeon,
                                   ),
@@ -234,13 +470,33 @@ class _OverviewTab extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Obx(
-                        () => Text(
-                          'Welcome, ${controller.displayName.value}',
-                          style: GoogleFonts.dmSans(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 17,
-                          ),
+                        () => Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Flexible(
+                              child: Text(
+                                'Welcome, ${controller.displayName.value}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: GoogleFonts.dmSans(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 17,
+                                ),
+                              ),
+                            ),
+                            if (controller.totalReviews.value > 0) ...[
+                              const SizedBox(width: 8),
+                              Text(
+                                '(${controller.avgRating.value.toStringAsFixed(1)})',
+                                style: GoogleFonts.dmSans(
+                                  color: kNeon,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                       ),
                       Text(
@@ -294,12 +550,30 @@ class _OverviewTab extends StatelessWidget {
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: Obx(
-                () => _PlainKpi(
-                  title: 'Rating',
-                  value: controller.avgRating.value.toStringAsFixed(1),
-                  color: kCoral,
-                ),
+              child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                stream: FirebaseFirestore.instance
+                    .collection('conversations')
+                    .where('participantIds', arrayContains: FirebaseAuth.instance.currentUser?.uid ?? '')
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  int totalUnread = 0;
+                  if (snapshot.hasData && snapshot.data != null) {
+                    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+                    for (final doc in snapshot.data!.docs) {
+                      final data = doc.data();
+                      final unreadCounts = Map<String, dynamic>.from(data['unreadCounts'] ?? {});
+                      totalUnread += (unreadCounts[uid] as num?)?.toInt() ?? 0;
+                    }
+                  }
+                  return GestureDetector(
+                    onTap: () => controller.currentTabIndex.value = 4,
+                    child: _PlainKpi(
+                      title: 'Unread Chats',
+                      value: totalUnread.toString(),
+                      color: kCoral,
+                    ),
+                  );
+                },
               ),
             ),
           ],
@@ -323,6 +597,40 @@ class _OverviewTab extends StatelessWidget {
                   title: 'Live Posts',
                   value: controller.activePostsCount.toString(),
                   color: kNeon,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        Row(
+          children: [
+            Expanded(
+              child: Obx(
+                () => InkWell(
+                  onTap: () => _showReviewsBottomSheet(context),
+                  borderRadius: BorderRadius.circular(16),
+                  child: _PlainKpi(
+                    title: 'Rating',
+                    value: controller.totalReviews.value > 0
+                        ? controller.avgRating.value.toStringAsFixed(1)
+                        : '0.0',
+                    color: kNeon,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Obx(
+                () => InkWell(
+                  onTap: () => _showReviewsBottomSheet(context),
+                  borderRadius: BorderRadius.circular(16),
+                  child: _PlainKpi(
+                    title: 'Total Reviews',
+                    value: controller.totalReviews.value.toString(),
+                    color: kSky,
+                  ),
                 ),
               ),
             ),
@@ -365,6 +673,14 @@ class _OverviewTab extends StatelessWidget {
                       onTap: () => controller.changeTab(5),
                     ),
                   ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _SmallActionButton(
+                      label: 'Promotions',
+                      color: kLilac,
+                      onTap: () => _openTrainerPromotionsSheet(context),
+                    ),
+                  ),
                 ],
               ),
             ],
@@ -375,104 +691,631 @@ class _OverviewTab extends StatelessWidget {
   }
 
   void _openEditProfileSheet(BuildContext context) {
-    Get.to(() => _TrainerProfileScreen(controller: controller));
+    Navigator.push(context, MaterialPageRoute(builder: (context) => _TrainerProfileScreen(controller: controller)));
+  }
+
+  void _openTrainerPromotionsSheet(BuildContext context) {
+    final kNeon = Theme.of(context).colorScheme.primary;
+    final discountController = TextEditingController(text: '20');
+    final codeController = TextEditingController(text: 'FIT20');
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.75,
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+                top: 20,
+                left: 20,
+                right: 20,
+              ),
+              decoration: const BoxDecoration(
+                color: Color(0xFF111118),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Manage Promotions',
+                        style: GoogleFonts.dmSans(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(CupertinoIcons.clear, color: Colors.white),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Create active discount promo codes for your clients to apply during booking checkouts.',
+                    style: GoogleFonts.dmSans(color: kMuted, fontSize: 12),
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: discountController,
+                          keyboardType: TextInputType.number,
+                          style: GoogleFonts.dmSans(color: Colors.white, fontWeight: FontWeight.bold),
+                          decoration: InputDecoration(
+                            labelText: 'Discount (%)',
+                            labelStyle: const TextStyle(color: kMuted, fontSize: 12),
+                            filled: true,
+                            fillColor: const Color(0xFF17171F),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(color: Color(0xFF2A2A36)),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide(color: kNeon),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          controller: codeController,
+                          style: const TextStyle(color: Colors.white),
+                          textCapitalization: TextCapitalization.characters,
+                          decoration: InputDecoration(
+                            labelText: 'Promo Code',
+                            labelStyle: const TextStyle(color: kMuted, fontSize: 12),
+                            filled: true,
+                            fillColor: const Color(0xFF17171F),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(color: Color(0xFF2A2A36)),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide(color: kNeon),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      GestureDetector(
+                        onTap: () {
+                          final discountStr = discountController.text.trim();
+                          final discount = int.tryParse(discountStr) ?? 0;
+                          if (discount > 0 && discount <= 100) {
+                            final random = Random();
+                            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+                            final suffix = List.generate(3, (index) => chars[random.nextInt(chars.length)]).join();
+                            
+                            final trainerPrefix = controller.displayName.value.trim().toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+                            final prefix = trainerPrefix.isNotEmpty
+                                ? (trainerPrefix.length > 5 ? trainerPrefix.substring(0, 5) : trainerPrefix)
+                                : 'FIT';
+
+                            setModalState(() {
+                              codeController.text = '$prefix$discount$suffix';
+                            });
+                          } else {
+                            showSnackbar('Invalid Discount', 'Please enter a valid discount number (1-100) first.');
+                          }
+                        },
+                        child: MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(CupertinoIcons.sparkles, color: kNeon, size: 14),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Auto-Generate Code',
+                                style: GoogleFonts.dmSans(
+                                  color: kNeon,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12,
+                                  decoration: TextDecoration.underline,
+                                  decorationColor: kNeon,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton(
+                      onPressed: () async {
+                        final code = codeController.text.trim().toUpperCase();
+                        final discountStr = discountController.text.trim();
+                        final discount = int.tryParse(discountStr);
+                        if (discount == null || discount <= 0 || discount > 100) {
+                          showSnackbar('Invalid Discount', 'Please enter a valid discount percentage (1-100).');
+                          return;
+                        }
+                        if (code.isEmpty) {
+                          showSnackbar('Invalid Code', 'Please enter or generate a promo code.');
+                          return;
+                        }
+                        await controller.addPromoCode(code, discount);
+                        setModalState(() {
+                          discountController.text = '20';
+                          codeController.text = 'FIT20';
+                        });
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: kNeon,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: Text(
+                        'Add Promotion Code',
+                        style: GoogleFonts.dmSans(
+                          color: kInk,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    'Your Promo Codes',
+                    style: GoogleFonts.dmSans(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: Obx(() {
+                      final list = controller.promotions;
+                      if (list.isEmpty) {
+                        return Center(
+                          child: Text(
+                            'No promotions created yet.',
+                            style: GoogleFonts.dmSans(color: kMuted, fontSize: 13),
+                          ),
+                        );
+                      }
+                      return ListView.separated(
+                        itemCount: list.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 10),
+                        itemBuilder: (context, index) {
+                          final item = list[index];
+                          final code = (item['code'] ?? '').toString();
+                          final discount = (item['discount'] ?? 0).toString();
+                          final id = (item['id'] ?? '').toString();
+                          return Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF17171F),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: const Color(0xFF2A2A36)),
+                            ),
+                            child: Row(
+                              children: [
+                                GestureDetector(
+                                  onTap: () async {
+                                    await Clipboard.setData(ClipboardData(text: code));
+                                    showSnackbar('Copied', 'Promo code "$code" copied to clipboard.');
+                                  },
+                                  behavior: HitTestBehavior.opaque,
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(CupertinoIcons.tag_solid, color: kLilac, size: 16),
+                                      const SizedBox(width: 10),
+                                      Text(
+                                        code,
+                                        style: GoogleFonts.dmSans(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 14,
+                                          decoration: TextDecoration.underline,
+                                          decorationStyle: TextDecorationStyle.dotted,
+                                          decorationColor: kLilac,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      const Icon(CupertinoIcons.doc_on_doc, color: kMuted, size: 12),
+                                    ],
+                                  ),
+                                ),
+                                const Spacer(),
+                                Text(
+                                  '$discount% Off',
+                                  style: GoogleFonts.dmSans(
+                                    color: kNeon,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                const SizedBox(width: 16),
+                                GestureDetector(
+                                  onTap: () => controller.deletePromoCode(id),
+                                  child: MouseRegion(
+                                    cursor: SystemMouseCursors.click,
+                                    child: const Icon(CupertinoIcons.trash, color: kCoral, size: 16),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      );
+                    }),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 }
 
-class _BookingsTab extends StatelessWidget {
+class _BookingsTab extends StatefulWidget {
   const _BookingsTab({required this.controller});
 
   final TrainerDashboardController controller;
 
   @override
+  State<_BookingsTab> createState() => _BookingsTabState();
+}
+
+class _BookingsTabState extends State<_BookingsTab> {
+  Color get kNeon => Theme.of(context).colorScheme.primary;
+  int _selectedSubTab = 0; // 0 = Pending, 1 = Confirmed, 2 = History
+
+  @override
   Widget build(BuildContext context) {
     return Obx(() {
-      final requests = controller.bookingRequests;
-      final upcoming = controller.confirmedUpcomingBookings;
-      if (requests.isEmpty && upcoming.isEmpty) {
-        return const Center(
-          child: Text(
-            'No booking activity yet',
-            style: TextStyle(color: Colors.white70),
-          ),
-        );
-      }
+      final requests = widget.controller.bookingRequests;
+      final upcoming = widget.controller.confirmedUpcomingBookings;
+      final history = widget.controller.pastBookingsHistory;
 
-      return ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      return Column(
         children: [
-          _sectionHeading('Booking Requests', '${requests.length} waiting'),
-          const SizedBox(height: 8),
-          if (requests.isEmpty)
-            const _EmptyPanel(message: 'No pending client requests.')
-          else
-            ...requests.map(
-              (item) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: _buildBookingCard(item),
-              ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+            child: _buildSubTabs(),
+          ),
+          Expanded(
+            child: Builder(
+              builder: (context) {
+                final list = _selectedSubTab == 0
+                    ? requests
+                    : _selectedSubTab == 1
+                        ? upcoming
+                        : history;
+                if (list.isEmpty) {
+                  return Center(
+                    child: Text(
+                      _selectedSubTab == 0
+                          ? 'No pending client requests.'
+                          : _selectedSubTab == 1
+                              ? 'No confirmed sessions yet.'
+                              : 'No past session history.',
+                      style: GoogleFonts.dmSans(color: Colors.white70, fontSize: 14),
+                    ),
+                  );
+                }
+                return ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                  itemCount: list.length,
+                  itemBuilder: (context, index) => Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _buildBookingCard(list[index]),
+                  ),
+                );
+              },
             ),
-          const SizedBox(height: 10),
-          _sectionHeading('Upcoming Schedule', '${upcoming.length} confirmed'),
-          const SizedBox(height: 8),
-          if (upcoming.isEmpty)
-            const _EmptyPanel(message: 'No confirmed sessions yet.')
-          else
-            ...upcoming.map(
-              (item) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: _buildBookingCard(item),
-              ),
-            ),
+          ),
         ],
       );
     });
   }
 
+  Widget _buildSubTabs() {
+    final tabs = ['Pending', 'Confirmed', 'History'];
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration( 
+        color: const Color(0xFF17171F),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+      ),
+      child: Row(
+        children: List.generate(tabs.length, (i) {
+          final active = _selectedSubTab == i;
+          return Expanded(
+            child: GestureDetector(
+              onTap: () => setState(() => _selectedSubTab = i),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: active ? kNeon : Colors.transparent,
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: Text(
+                  tabs[i],
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.dmSans(
+                    color: active ? kInk : kMuted,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            ),
+          );
+        }),
+      ),
+    );
+  }
+
   Widget _buildBookingCard(Map<String, dynamic> item) {
     final status = (item['status'] ?? 'pending').toString();
+    final fallbackClientName = (item['clientName'] ?? item['userName'] ?? item['client'] ?? 'Client').toString();
+    final fallbackClientPhoto = (item['clientPhotoUrl'] ?? item['userPhotoUrl'] ?? '').toString();
+    final userId = (item['userId'] ?? '').toString();
+
+    if (userId.isEmpty) {
+      final resolvedPhoto = _getPhotoUrl(fallbackClientPhoto, fallbackClientName, userId, item, null);
+      return _buildBookingCardTile(item, fallbackClientName, resolvedPhoto, status, userId);
+    }
+
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance.collection('users').doc(userId).snapshots(),
+      builder: (context, snapshot) {
+        String name = fallbackClientName;
+        String rawPhoto = fallbackClientPhoto;
+        Map<String, dynamic> userData = {};
+
+        if (snapshot.hasData && snapshot.data != null && snapshot.data!.exists) {
+          final data = snapshot.data!.data() ?? {};
+          userData = data;
+          name = (data['name'] ?? data['fullName'] ?? data['displayName'] ?? fallbackClientName).toString();
+          rawPhoto = (data['photoUrl'] ?? data['avatarUrl'] ?? data['profileImage'] ?? fallbackClientPhoto).toString();
+        }
+
+        final resolvedPhoto = _getPhotoUrl(rawPhoto, name, userId, item, userData);
+        return _buildBookingCardTile(item, name, resolvedPhoto, status, userId);
+      },
+    );
+  }
+
+  String _getPhotoUrl(String rawPhoto, String name, String userId, Map<String, dynamic> item, Map<String, dynamic>? userData) {
+    final photo = rawPhoto.trim();
+    if (photo.startsWith('http://') || photo.startsWith('https://')) {
+      return photo;
+    }
+
+    // Deterministic fallback seed based on user name/id hash
+    final seed = (userId.isNotEmpty ? userId : name).hashCode.abs() % 100;
+    
+    // Determine gender dynamically from database profile or name heuristic
+    final genderVal = (userData?['gender'] ?? '').toString().toLowerCase();
+    String gender;
+    if (genderVal.contains('female') || genderVal.contains('women')) {
+      gender = 'women';
+    } else if (genderVal.contains('male') || genderVal.contains('men')) {
+      gender = 'men';
+    } else {
+      final nameLower = name.toLowerCase();
+      if (nameLower.contains('kaiya') ||
+          nameLower.contains('kaya') ||
+          nameLower.contains('kiaya') ||
+          nameLower.contains('lisa') ||
+          nameLower.contains('sara') ||
+          nameLower.contains('anna') ||
+          nameLower.contains('maria') ||
+          nameLower.contains('emma') ||
+          nameLower.contains('sofia') ||
+          nameLower.contains('julia') ||
+          nameLower.contains('lucy') ||
+          nameLower.contains('charlotte')) {
+        gender = 'women';
+      } else {
+        gender = seed % 2 == 0 ? 'men' : 'women';
+      }
+    }
+    
+    // Check if rawPhoto is a number (mock portrait index)
+    if (photo.isNotEmpty) {
+      final parsed = int.tryParse(photo);
+      if (parsed != null) {
+        return 'https://randomuser.me/api/portraits/$gender/$parsed.jpg';
+      }
+    }
+
+    // Check portrait index in user data or booking item
+    final portraitVal = (userData?['portrait'] ?? item['portrait']);
+    if (portraitVal != null) {
+      final parsed = int.tryParse(portraitVal.toString());
+      if (parsed != null) {
+        return 'https://randomuser.me/api/portraits/$gender/$parsed.jpg';
+      }
+    }
+    
+    return 'https://randomuser.me/api/portraits/$gender/$seed.jpg';
+  }
+
+  Widget _buildBookingCardTile(Map<String, dynamic> item, String clientName, String clientPhoto, String status, String userId) {
+    final paid = item['paid'] == true;
+    final amountPaid = (item['amountPaid'] as num?)?.toInt() ?? 0;
+    final paymentStatus = item['paymentStatus'] as String? ?? (paid ? 'fully_paid' : (amountPaid > 0 ? 'partially_paid' : 'unpaid'));
+
+    final Color paymentColor;
+    final String paymentText;
+    if (paymentStatus == 'fully_paid') {
+      paymentColor = kNeon;
+      paymentText = 'Fully Paid';
+    } else if (paymentStatus == 'partially_paid') {
+      paymentColor = const Color(0xFFFFBB33); // Gold
+      paymentText = '50% Paid (\$$amountPaid)';
+    } else {
+      paymentColor = kCoral; // Unpaid in red
+      paymentText = 'Unpaid';
+    }
+
     return LiquidTile(
       radius: 16,
       accent: kSky,
-      child: Column(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            (item['clientName'] ?? item['userName'] ?? 'Client').toString(),
-            style: GoogleFonts.dmSans(
-              color: Colors.white,
-              fontWeight: FontWeight.w700,
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.08), width: 1.5),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(10.5),
+              child: clientPhoto.isNotEmpty
+                  ? CachedNetworkImage(
+                      imageUrl: clientPhoto,
+                      fit: BoxFit.cover,
+                      errorWidget: (_, __, ___) => const Icon(
+                        CupertinoIcons.person_fill,
+                        color: kMuted,
+                        size: 22,
+                      ),
+                    )
+                  : const Icon(
+                      CupertinoIcons.person_fill,
+                      color: kMuted,
+                      size: 22,
+                    ),
             ),
           ),
-          const SizedBox(height: 4),
-          Text(
-            '${item['sessionType'] ?? item['specialty'] ?? 'Session'} • ${item['date'] ?? ''} ${item['time'] ?? ''}',
-            style: GoogleFonts.dmSans(color: kMuted, fontSize: 12),
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              _StatusChip(status: status),
-              const Spacer(),
-              if (status == 'pending' || status == 'requested') ...[
-                _SmallActionButton(
-                  label: 'Accept',
-                  color: kNeon,
-                  onTap: () => controller.acceptBooking(item),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        clientName,
+                        style: GoogleFonts.dmSans(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                    if (userId.isNotEmpty)
+                      GestureDetector(
+                        onTap: () {
+                          context.push('/message-screen', extra: {
+                            'name': clientName,
+                            'otherId': userId,
+                            'photoUrl': clientPhoto,
+                          });
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: kNeon.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: kNeon.withValues(alpha: 0.3)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(CupertinoIcons.chat_bubble_fill, color: kNeon, size: 12),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Message',
+                                style: GoogleFonts.dmSans(
+                                  color: kNeon,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 10,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
-                const SizedBox(width: 8),
-                _SmallActionButton(
-                  label: 'Reject',
-                  color: kCoral,
-                  onTap: () => controller.rejectBooking(item),
+                const SizedBox(height: 4),
+                Text(
+                  '${item['sessionType'] ?? item['specialty'] ?? item['type'] ?? 'Session'} • ${item['date'] ?? ''} ${item['time'] ?? ''}',
+                  style: GoogleFonts.dmSans(color: kMuted, fontSize: 11),
                 ),
-              ] else
-                _SmallActionButton(
-                  label: 'Cancel',
-                  color: kCoral,
-                  onTap: () => controller.cancelBooking(item),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    _StatusChip(status: status),
+                    const SizedBox(width: 8),
+                    _PaymentStatusChip(text: paymentText, color: paymentColor),
+                  ],
                 ),
-            ],
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    if (status == 'pending' || status == 'requested') ...[
+                      _SmallActionButton(
+                        label: 'Accept',
+                        color: kNeon,
+                        onTap: () => widget.controller.acceptBooking(item),
+                      ),
+                      const SizedBox(width: 8),
+                      _SmallActionButton(
+                        label: 'Reject',
+                        color: kCoral,
+                        onTap: () => widget.controller.rejectBooking(item),
+                      ),
+                    ] else if (status == 'confirmed' || status == 'accepted') ...[
+                      _SmallActionButton(
+                        label: 'Complete',
+                        color: kNeon,
+                        onTap: () => widget.controller.completeBooking(item),
+                      ),
+                      const SizedBox(width: 8),
+                      _SmallActionButton(
+                        label: 'Cancel',
+                        color: kCoral,
+                        onTap: () => widget.controller.cancelBooking(item),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -506,6 +1349,7 @@ class _AvailabilityTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final kNeon = Theme.of(context).colorScheme.primary;
     return Obx(() {
       final _ = controller.availability.length;
       return ListView(
@@ -862,6 +1706,7 @@ class _EarningsTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final kNeon = Theme.of(context).colorScheme.primary;
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       children: [
@@ -908,43 +1753,154 @@ class _EarningsTab extends StatelessWidget {
             ],
           ),
         ),
+        const SizedBox(height: 20),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Text(
+            'Transaction History',
+            style: GoogleFonts.dmSans(
+              color: Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
         const SizedBox(height: 12),
         Obx(() {
-          final _ = controller.payouts.length;
-          final list = controller.payouts.toList(growable: false);
-          if (list.isEmpty) {
-            return const SizedBox.shrink();
+          final history = controller.earningsHistory;
+          if (history.isEmpty) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.only(top: 24),
+                child: Text(
+                  'No transactions yet',
+                  style: GoogleFonts.dmSans(color: Colors.white70),
+                ),
+              ),
+            );
           }
           return Column(
-            children:
-                list.take(8).map((item) {
-                  final status = (item['status'] ?? 'requested').toString();
-                  final amount = (item['amount'] ?? 0).toString();
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: LiquidTile(
-                      radius: 14,
-                      accent: kLilac,
-                      child: Row(
+            children: history.map((item) {
+              final type = item['type'] as String;
+              final title = item['title'] as String;
+              final subtitle = item['subtitle'] as String;
+              final amount = item['amount'] as double;
+              final date = item['dateTime'] as DateTime;
+              final status = item['status'] as String;
+
+              Color accent;
+              IconData icon;
+              Color textCol;
+              String amountText;
+
+              if (type == 'payment') {
+                accent = kNeon;
+                icon = Icons.arrow_upward_rounded;
+                textCol = kNeon;
+                amountText = '+\$${amount.toStringAsFixed(2)}';
+              } else if (type == 'refund') {
+                accent = kCoral;
+                icon = Icons.undo_rounded;
+                textCol = kCoral;
+                amountText = '-\$${(-amount).toStringAsFixed(2)}';
+              } else {
+                accent = kLilac;
+                icon = Icons.account_balance_wallet_rounded;
+                textCol = Colors.white;
+                amountText = '-\$${(-amount).toStringAsFixed(2)}';
+              }
+
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: LiquidTile(
+                  radius: 16,
+                  accent: accent,
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: accent.withOpacity(0.12),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(icon, color: accent, size: 18),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              title,
+                              style: GoogleFonts.dmSans(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13.5,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              subtitle,
+                              style: GoogleFonts.dmSans(
+                                color: Colors.white60,
+                                fontSize: 11,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
                           Text(
-                            '\$$amount',
+                            amountText,
                             style: GoogleFonts.dmSans(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w700,
+                              color: textCol,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
                             ),
                           ),
-                          const Spacer(),
-                          _StatusChip(status: status),
+                          const SizedBox(height: 3),
+                          if (type == 'payout')
+                            _StatusChip(status: status)
+                          else
+                            Text(
+                              _formatHistoryDate(date),
+                              style: GoogleFonts.dmSans(
+                                color: Colors.white38,
+                                fontSize: 10,
+                              ),
+                            ),
                         ],
                       ),
-                    ),
-                  );
-                }).toList(),
+                    ],
+                  ),
+                ),
+              );
+            }).toList(),
           );
         }),
       ],
     );
+  }
+
+  String _formatHistoryDate(DateTime dt) {
+    final now = DateTime.now();
+    if (dt.year == now.year && dt.month == now.month && dt.day == now.day) {
+      return 'Today';
+    }
+    final yesterday = DateTime.now().subtract(const Duration(days: 1));
+    if (dt.year == yesterday.year && dt.month == yesterday.month && dt.day == yesterday.day) {
+      return 'Yesterday';
+    }
+    final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return '${months[dt.month - 1]} ${dt.day}';
   }
 }
 
@@ -955,6 +1911,7 @@ class _ReviewsTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final kNeon = Theme.of(context).colorScheme.primary;
     return Obx(() {
       final _ = controller.reviews.length;
       final list = controller.reviews.toList(growable: false);
@@ -1015,7 +1972,7 @@ class _ReviewsTab extends StatelessWidget {
                             ),
                           ),
                           const Spacer(),
-                          const Icon(
+                          Icon(
                             Icons.star_rounded,
                             color: kNeon,
                             size: 18,
@@ -1038,7 +1995,7 @@ class _ReviewsTab extends StatelessWidget {
                       ),
                       const SizedBox(height: 10),
                       InkWell(
-                        onTap: () => _openReviewerProfile(item),
+                        onTap: () => _openReviewerProfile(context, item),
                         borderRadius: BorderRadius.circular(12),
                         child: Container(
                           padding: const EdgeInsets.symmetric(
@@ -1058,10 +2015,11 @@ class _ReviewsTab extends StatelessWidget {
                                 width: 36,
                                 height: 36,
                                 decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
+                                  borderRadius: BorderRadius.circular(10),
                                   color: kSky.withValues(alpha: 0.16),
                                 ),
-                                child: ClipOval(
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(9),
                                   child:
                                       reviewerPhoto.isNotEmpty
                                           ? CachedNetworkImage(
@@ -1136,19 +2094,21 @@ class _ReviewsTab extends StatelessWidget {
     return fallback;
   }
 
-  Future<void> _openReviewerProfile(Map<String, dynamic> review) async {
+  Future<void> _openReviewerProfile(BuildContext context, Map<String, dynamic> review) async {
     final data = await controller.loadReviewerProfile(review);
-    Get.to(() => _UserProfileInfoScreen(data: data));
+    if (!context.mounted) return;
+    Navigator.push(context, MaterialPageRoute(builder: (context) => _UserProfileInfoScreen(data: data)));
   }
 }
 
-class _PostsTab extends StatelessWidget {
+class _PostsTab extends ConsumerWidget {
   const _PostsTab({required this.controller});
 
   final TrainerDashboardController controller;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final kNeon = Theme.of(context).colorScheme.primary;
     return Obx(() {
       final list = controller.recentPosts;
       return ListView.separated(
@@ -1201,13 +2161,13 @@ class _PostsTab extends StatelessWidget {
           }
 
           final post = list[index - 1];
-          return _buildPostCard(post);
+          return _buildPostCard(context, ref, post);
         },
       );
     });
   }
 
-  Widget _buildPostCard(Map<String, dynamic> post) {
+  Widget _buildPostCard(BuildContext context, WidgetRef ref, Map<String, dynamic> post) {
     final title = (post['title'] ?? '').toString();
     final caption = (post['caption'] ?? '').toString();
     final category = (post['category'] ?? 'Workout').toString();
@@ -1219,6 +2179,10 @@ class _PostsTab extends StatelessWidget {
         (post['tags'] is List)
             ? (post['tags'] as List).map((e) => e.toString()).toList()
             : <String>[];
+
+    final currentUid = FirebaseAuth.instance.currentUser?.uid;
+    final likedBy = List<String>.from(post['likedBy'] ?? <dynamic>[]);
+    final isLiked = currentUid != null && likedBy.contains(currentUid);
 
     return LiquidTile(
       radius: 16,
@@ -1289,14 +2253,70 @@ class _PostsTab extends StatelessWidget {
           const SizedBox(height: 10),
           Row(
             children: [
-              Text(
-                '$likes likes',
-                style: GoogleFonts.dmSans(color: kMuted, fontSize: 11),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  final postId = (post['id'] ?? post['postId'] ?? '').toString();
+                  if (postId.isNotEmpty) {
+                    ref.read(postInteractionServiceProvider).toggleLike(postId);
+                  }
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+                  child: Row(
+                    children: [
+                      Icon(
+                        isLiked ? CupertinoIcons.heart_fill : CupertinoIcons.heart,
+                        color: isLiked ? kCoral : kMuted,
+                        size: 14,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        likes,
+                        style: GoogleFonts.dmSans(
+                          color: isLiked ? kCoral : kMuted,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-              const SizedBox(width: 10),
-              Text(
-                '$comments comments',
-                style: GoogleFonts.dmSans(color: kMuted, fontSize: 11),
+              const SizedBox(width: 16),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  final postId = (post['id'] ?? post['postId'] ?? '').toString();
+                  if (postId.isNotEmpty) {
+                    showModalBottomSheet(
+                      context: context,
+                      isScrollControlled: true,
+                      backgroundColor: Colors.transparent,
+                      builder: (context) => PostCommentsSheet(
+                        postId: postId,
+                        trainerName: controller.displayName.value,
+                      ),
+                    );
+                  }
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+                  child: Row(
+                    children: [
+                      const Icon(CupertinoIcons.chat_bubble, color: kSky, size: 14),
+                      const SizedBox(width: 4),
+                      Text(
+                        comments,
+                        style: GoogleFonts.dmSans(
+                          color: kMuted,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ],
           ),
@@ -1365,7 +2385,7 @@ class _PostsTab extends StatelessWidget {
   }
 
   void _openCreatePostSheet(BuildContext context) {
-    Get.to(() => _CreateTrainerPostScreen(controller: controller));
+    Navigator.push(context, MaterialPageRoute(builder: (context) => _CreateTrainerPostScreen(controller: controller)));
   }
 
   String _formatPostDate(dynamic raw) {
@@ -1396,6 +2416,7 @@ class _CreateTrainerPostScreen extends StatefulWidget {
 }
 
 class _CreateTrainerPostScreenState extends State<_CreateTrainerPostScreen> {
+  Color get kNeon => Theme.of(context).colorScheme.primary;
   late final TextEditingController _titleController;
   late final TextEditingController _captionController;
   late final TextEditingController _tagsController;
@@ -1826,7 +2847,7 @@ class _CreateTrainerPostScreenState extends State<_CreateTrainerPostScreen> {
 
   Future<void> _submit() async {
     if (!_validateBeforeSubmit()) {
-      Get.snackbar('Fix form', 'Please resolve highlighted fields first.');
+      showSnackbar('Fix form', 'Please resolve highlighted fields first.');
       return;
     }
 
@@ -1838,7 +2859,7 @@ class _CreateTrainerPostScreenState extends State<_CreateTrainerPostScreen> {
       selectedDate: _selectedDate,
     );
     if (!ok || !mounted) return;
-    Get.back();
+    context.pop();
   }
 
   void _validateLive() {
@@ -1928,11 +2949,16 @@ class _TrainerProfileScreen extends StatefulWidget {
 }
 
 class _TrainerProfileScreenState extends State<_TrainerProfileScreen> {
+  Color get kNeon => Theme.of(context).colorScheme.primary;
+  late final TextEditingController _nameController;
   late final TextEditingController _priceController;
   late final TextEditingController _bioController;
   late final TextEditingController _specializationController;
   late final TextEditingController _languagesController;
   late final TextEditingController _locationsController;
+  late final TextEditingController _ageController;
+  late final TextEditingController _heightController;
+  late final TextEditingController _experienceController;
   final List<String> _languageOptions = const ['English', 'Khmer'];
   final Set<String> _selectedLanguages = <String>{};
   bool _isEditing = false;
@@ -1942,6 +2968,9 @@ class _TrainerProfileScreenState extends State<_TrainerProfileScreen> {
   @override
   void initState() {
     super.initState();
+    _nameController = TextEditingController(
+      text: controller.displayNameController.text,
+    );
     _priceController = TextEditingController(
       text: controller.sessionPriceController.text,
     );
@@ -1962,15 +2991,28 @@ class _TrainerProfileScreenState extends State<_TrainerProfileScreen> {
     _locationsController = TextEditingController(
       text: controller.sessionLocationController.text,
     );
+    _ageController = TextEditingController(
+      text: controller.ageController.text,
+    );
+    _heightController = TextEditingController(
+      text: controller.heightController.text,
+    );
+    _experienceController = TextEditingController(
+      text: controller.experienceYearsController.text,
+    );
   }
 
   @override
   void dispose() {
+    _nameController.dispose();
     _priceController.dispose();
     _bioController.dispose();
     _specializationController.dispose();
     _languagesController.dispose();
     _locationsController.dispose();
+    _ageController.dispose();
+    _heightController.dispose();
+    _experienceController.dispose();
     super.dispose();
   }
 
@@ -2043,6 +3085,41 @@ class _TrainerProfileScreenState extends State<_TrainerProfileScreen> {
               _summaryHeroCard(email),
               const SizedBox(height: 14),
               _infoCard(
+                icon: Icons.person_rounded,
+                color: kSky,
+                title: 'Full Name',
+                controller: _nameController,
+                hint: 'Trainer name',
+              ),
+              const SizedBox(height: 10),
+              _infoCard(
+                icon: Icons.cake_rounded,
+                color: kNeon,
+                title: 'Age',
+                controller: _ageController,
+                hint: 'Age (e.g. 29)',
+                keyboardType: TextInputType.number,
+              ),
+              const SizedBox(height: 10),
+              _infoCard(
+                icon: Icons.height_rounded,
+                color: kSky,
+                title: 'Height (cm)',
+                controller: _heightController,
+                hint: 'Height in cm (e.g. 170)',
+                keyboardType: TextInputType.number,
+              ),
+              const SizedBox(height: 10),
+              _infoCard(
+                icon: Icons.work_history_rounded,
+                color: kLilac,
+                title: 'Years of Experience',
+                controller: _experienceController,
+                hint: 'Experience in years (e.g. 5)',
+                keyboardType: TextInputType.number,
+              ),
+              const SizedBox(height: 10),
+              _infoCard(
                 icon: Icons.attach_money_rounded,
                 color: kCoral,
                 title: 'Session Price',
@@ -2090,7 +3167,7 @@ class _TrainerProfileScreenState extends State<_TrainerProfileScreen> {
       borderRadius: BorderRadius.circular(20),
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
-        onTap: () => Get.back(),
+        onTap: () => context.pop(),
         child: Container(
           width: 40,
           height: 40,
@@ -2121,7 +3198,7 @@ class _TrainerProfileScreenState extends State<_TrainerProfileScreen> {
                 return Container(
                   padding: const EdgeInsets.all(3),
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(colors: [kNeon, kSky]),
+                    gradient: LinearGradient(colors: [kNeon, kSky]),
                     borderRadius: BorderRadius.circular(48),
                   ),
                   child: ClipRRect(
@@ -2165,7 +3242,7 @@ class _TrainerProfileScreenState extends State<_TrainerProfileScreen> {
                   width: 32,
                   height: 32,
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(colors: [kNeon, kSky]),
+                    gradient: LinearGradient(colors: [kNeon, kSky]),
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
                       color: const Color(0xFF17171F),
@@ -2400,7 +3477,7 @@ class _TrainerProfileScreenState extends State<_TrainerProfileScreen> {
           decoration: BoxDecoration(
             gradient:
                 neonStyle
-                    ? const LinearGradient(colors: [kNeon, Color(0xFFD6F95C)])
+                    ? LinearGradient(colors: [kNeon, const Color(0xFFD6F95C)])
                     : LinearGradient(
                       colors: [
                         kSky.withValues(alpha: 0.25),
@@ -2441,11 +3518,15 @@ class _TrainerProfileScreenState extends State<_TrainerProfileScreen> {
   Future<void> _saveProfile() async {
     _languagesController.text = _selectedLanguages.join(', ');
     await controller.saveProfileDraft(
+      name: _nameController.text,
       sessionPrice: _priceController.text,
       bio: _bioController.text,
       specializations: _specializationController.text,
       languages: _languagesController.text,
       locations: _locationsController.text,
+      age: _ageController.text,
+      height: _heightController.text,
+      experienceYears: _experienceController.text,
     );
     if (mounted) {
       setState(() => _isEditing = false);
@@ -2471,6 +3552,7 @@ class _UserProfileInfoScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final kNeon = Theme.of(context).colorScheme.primary;
     final name = _pickString([
       data['reviewerName'],
       data['name'],
@@ -2521,10 +3603,11 @@ class _UserProfileInfoScreen extends StatelessWidget {
                       width: 60,
                       height: 60,
                       decoration: BoxDecoration(
-                        shape: BoxShape.circle,
+                        borderRadius: BorderRadius.circular(16),
                         border: Border.all(color: kSky.withValues(alpha: 0.5)),
                       ),
-                      child: ClipOval(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(14.5),
                         child:
                             photoUrl.isNotEmpty
                                 ? CachedNetworkImage(
@@ -2692,6 +3775,7 @@ class _StatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final kNeon = Theme.of(context).colorScheme.primary;
     final normalized = status.toLowerCase();
     final color =
         normalized == 'confirmed' || normalized == 'paid'
@@ -2708,12 +3792,46 @@ class _StatusChip extends StatelessWidget {
         border: Border.all(color: color.withValues(alpha: 0.35)),
       ),
       child: Text(
-        status,
+        status.isEmpty ? '' : status[0].toUpperCase() + status.substring(1).toLowerCase(),
         style: GoogleFonts.dmSans(
           color: color,
           fontWeight: FontWeight.w700,
           fontSize: 11,
         ),
+      ),
+    );
+  }
+}
+
+class _PaymentStatusChip extends StatelessWidget {
+  const _PaymentStatusChip({required this.text, required this.color});
+
+  final String text;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(CupertinoIcons.creditcard_fill, color: color, size: 11),
+          const SizedBox(width: 4),
+          Text(
+            text,
+            style: GoogleFonts.dmSans(
+              color: color,
+              fontWeight: FontWeight.w700,
+              fontSize: 11,
+            ),
+          ),
+        ],
       ),
     );
   }

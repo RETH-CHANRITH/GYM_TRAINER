@@ -1,23 +1,54 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:go_router/go_router.dart';
 
 import '../controllers/sign_up_controller.dart';
-import '../../../routes/app_pages.dart';
+import '../../../routes/app_router.dart' show Routes;
 import '../../../../config/glass_ui.dart';
 
-class SignUpView extends GetView<SignUpController> {
+class SignUpView extends ConsumerStatefulWidget {
   const SignUpView({super.key});
 
-  // ─── Design Tokens (matching home_view) ────────────────────────────────────────
+  @override
+  ConsumerState<SignUpView> createState() => _SignUpViewState();
+}
+
+class _SignUpViewState extends ConsumerState<SignUpView> {
+  late final TextEditingController _nameController;
+  late final TextEditingController _emailController;
+  late final TextEditingController _passwordController;
+  late final TextEditingController _confirmPasswordController;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController();
+    _emailController = TextEditingController();
+    _passwordController = TextEditingController();
+    _confirmPasswordController = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    _confirmPasswordController.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
+    final isLoading = ref.watch(signUpNotifierProvider);
+    final notifier = ref.read(signUpNotifierProvider.notifier);
+
     return Scaffold(
       backgroundColor: kInk,
       extendBodyBehindAppBar: true,
-      appBar: glassAppBar(title: 'Create Account', onBack: () => Get.back()),
+      appBar: glassAppBar(title: 'Create Account', onBack: () => context.pop()),
       body: Stack(
         children: [
           Positioned.fill(child: trainerBackground()),
@@ -84,7 +115,7 @@ class SignUpView extends GetView<SignUpController> {
                   _fieldLabel('Full Name'),
                   const SizedBox(height: 8),
                   _glassField(
-                    ctrl: controller.nameController,
+                    ctrl: _nameController,
                     hint: 'Enter your full name',
                     icon: CupertinoIcons.person,
                   ),
@@ -94,7 +125,7 @@ class SignUpView extends GetView<SignUpController> {
                   _fieldLabel('Email Address'),
                   const SizedBox(height: 8),
                   _glassField(
-                    ctrl: controller.emailController,
+                    ctrl: _emailController,
                     hint: 'Enter your email',
                     icon: CupertinoIcons.mail,
                     type: TextInputType.emailAddress,
@@ -105,7 +136,7 @@ class SignUpView extends GetView<SignUpController> {
                   _fieldLabel('Password'),
                   const SizedBox(height: 8),
                   _glassField(
-                    ctrl: controller.passwordController,
+                    ctrl: _passwordController,
                     hint: 'Create a password',
                     icon: CupertinoIcons.lock,
                     obscure: true,
@@ -116,7 +147,7 @@ class SignUpView extends GetView<SignUpController> {
                   _fieldLabel('Confirm Password'),
                   const SizedBox(height: 8),
                   _glassField(
-                    ctrl: controller.confirmPasswordController,
+                    ctrl: _confirmPasswordController,
                     hint: 'Re-enter your password',
                     icon: CupertinoIcons.lock_shield,
                     obscure: true,
@@ -127,27 +158,30 @@ class SignUpView extends GetView<SignUpController> {
                   neonButton(
                     label: 'Create Account',
                     accent: kLilac,
-                    onPressed: controller.signUp,
-                    child: Obx(
-                      () =>
-                          controller.isLoading.value
-                              ? const SizedBox(
-                                width: 22,
-                                height: 22,
-                                child: CircularProgressIndicator(
-                                  color: Colors.white,
-                                  strokeWidth: 2.5,
-                                ),
-                              )
-                              : Text(
-                                'Create Account',
-                                style: GoogleFonts.dmSans(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w700,
-                                  color: Colors.white,
-                                ),
-                              ),
+                    onPressed: () => notifier.signUp(
+                      context,
+                      name: _nameController.text,
+                      email: _emailController.text,
+                      password: _passwordController.text,
+                      confirmPassword: _confirmPasswordController.text,
                     ),
+                    child: isLoading
+                        ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2.5,
+                          ),
+                        )
+                        : Text(
+                          'Create Account',
+                          style: GoogleFonts.dmSans(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
                   ),
                   const SizedBox(height: 20),
 
@@ -164,7 +198,7 @@ class SignUpView extends GetView<SignUpController> {
                           ),
                         ),
                         GestureDetector(
-                          onTap: () => Get.toNamed(Routes.LOGIN),
+                          onTap: () => context.push(Routes.LOGIN),
                           child: Text(
                             'Sign In',
                             style: GoogleFonts.dmSans(

@@ -1,0 +1,467 @@
+{
+  "documents": [
+    {
+      "name": "projects/gym-trainer-booking-app/databases/(default)/documents/bookings/EqUoH7vP4WWsqsd9W3yv",
+      "fields": {
+        "updatedAt": {
+          "timestampValue": "2026-06-15T06:53:41.876Z"
+        },
+        "clientName": {
+          "stringValue": "KAIYA"
+        },
+        "portrait": {
+          "integerValue": "32"
+        },
+        "trainerId": {
+          "stringValue": "h8bnso2mbTPWQF0KrEflU3DwieG2"
+        },
+        "price": {
+          "integerValue": "600"
+        },
+        "trainerPhotoUrl": {
+          "stringValue": "https://wrnimhuovvyhysiufffd.supabase.co/storage/v1/object/public/images/profiles/h8bnso2mbTPWQF0KrEflU3DwieG2_1781422525774.jpg"
+        },
+        "trainer": {
+          "stringValue": "BUTH"
+        },
+        "type": {
+          "stringValue": "1-on-1"
+        },
+        "date": {
+          "stringValue": "Tue, Jun 16, 2026"
+        },
+        "paymentStatus": {
+          "stringValue": "fully_paid"
+        },
+        "status": {
+          "stringValue": "confirmed"
+        },
+        "userId": {
+          "stringValue": "jaX4tiFMNbYXlO5oD4k4k87WV592"
+        },
+        "scheduledAt": {
+          "timestampValue": "2026-06-16T09:00:00Z"
+        },
+        "paid": {
+          "booleanValue": true
+        },
+        "specialty": {
+          "stringValue": "Cardio & HIIT"
+        },
+        "time": {
+          "stringValue": "04:00 PM - 06:00 PM"
+        },
+        "trainerName": {
+          "stringValue": "BUTH"
+        },
+        "discountApplied": {
+          "integerValue": "50"
+        },
+        "clientPhotoUrl": {
+          "stringValue": "https://wrnimhuovvyhysiufffd.supabase.co/storage/v1/object/public/images/profiles/jaX4tiFMNbYXlO5oD4k4k87WV592_1773381828538.jpg"
+        },
+        "createdAt": {
+          "timestampValue": "2026-06-15T06:49:00.858Z"
+        },
+        "updatedBy": {
+          "stringValue": "h8bnso2mbTPWQF0KrEflU3DwieG2"
+        },
+        "amountPaid": {
+          "integerValue": "300"
+        }
+      },
+      "createTime": "2026-06-15T06:49:00.948230Z",
+      "updateTime": "2026-06-15T06:53:41.906634Z"
+    },
+    {
+      "name": "projects/gym-trainer-booking-app/databases/(default)/documents/bookings/JdTqihBh3b8xz7usVxvD",
+      "fields": {
+        "date": {
+          "stringValue": "Sun, Jun 7, 2026"
+        },
+        "type": {
+          "stringValue": "Online"
+        },
+        "status": {
+          "stringValue": "cancelled"
+        },
+        "updatedAt": {
+          "timestampValue": "2026-06-10T11:33:36.671Z"
+        },
+        "trainerPhotoUrl": {
+          "stringValue": "https://wrnimhuovvyhysiufffd.supabase.co/storage/v1/object/public/images/profiles/p5zSvB4B9Gh0E72y2FrAsN8LlZd2_1780571410836.jpg"
+        },
+        "trainer": {
+          "stringValue": "anh rith kach"
+        },
+        "trainerId": {
+          "stringValue": "p5zSvB4B9Gh0E72y2FrAsN8LlZd2"
+        },
+        "price": {
+          "integerValue": "313"
+        },
+        "portrait": {
+          "integerValue": "32"
+        },
+        "trainerName": {
+          "stringValue": "anh rith kach"
+        },
+        "specialty": {
+          "stringValue": "Strength Training"
+        },
+        "time": {
+          "stringValue": "03:00 PM"
+        },
+        "createdAt": {
+          "timestampValue": "2026-06-07T16:51:15.625Z"
+        },
+        "updatedBy": {
+          "stringValue": "p5zSvB4B9Gh0E72y2FrAsN8LlZd2"
+        },
+        "userId": {
+          "stringValue": "jaX4tiFMNbYXlO5oD4k4k87WV592"
+        },
+        "statusReason": {
+          "stringValue": "Cancelled by trainer"
+        },
+        "paid": {
+          "booleanValue": true
+        }
+      },
+      "createTime": "2026-06-07T16:51:15.652768Z",
+      "updateTime": "2026-06-10T11:33:36.684718Z"
+    },
+    {
+      "name": "projects/gym-trainer-booking-app/databases/(default)/documents/bookings/KcBLutAMIclyfjnWGqmq",
+      "fields": {
+        "specialty": {
+          "stringValue": "Strength Training"
+        },
+        "time": {
+          "stringValue": "06:00 AM"
+        },
+        "trainerName": {
+          "stringValue": "anh rith kach"
+        },
+        "createdAt": {
+          "timestampValue": "2026-06-07T16:37:36.742Z"
+        },
+        "userId": {
+          "stringValue": "jaX4tiFMNbYXlO5oD4k4k87WV592"
+        },
+        "paid": {
+          "booleanValue": false
+        },
+        "date": {
+          "stringValue": "Mon, Jun 8, 2026"
+        },
+        "type": {
+          "stringValue": "Group"
+        },
+        "status": {
+          "stringValue": "cancelled"
+        },
+        "updatedAt": {
+          "timestampValue": "2026-06-07T16:50:51.235Z"
+        },
+        "portrait": {
+          "integerValue": "32"
+        },
+        "trainerId": {
+          "stringValue": "p5zSvB4B9Gh0E72y2FrAsN8LlZd2"
+        },
+        "price": {
+          "integerValue": "313"
+        },
+        "trainer": {
+          "stringValue": "anh rith kach"
+        }
+      },
+      "createTime": "2026-06-07T16:37:36.797254Z",
+      "updateTime": "2026-06-07T16:50:51.263282Z"
+    },
+    {
+      "name": "projects/gym-trainer-booking-app/databases/(default)/documents/bookings/RLFIxZna4MAtq7VLEppJ",
+      "fields": {
+        "trainerName": {
+          "stringValue": "anh rith kach"
+        },
+        "specialty": {
+          "stringValue": "Strength Training"
+        },
+        "time": {
+          "stringValue": "07:00 AM"
+        },
+        "amountPaid": {
+          "integerValue": "157"
+        },
+        "clientPhotoUrl": {
+          "stringValue": "https://wrnimhuovvyhysiufffd.supabase.co/storage/v1/object/public/images/profiles/jaX4tiFMNbYXlO5oD4k4k87WV592_1773381828538.jpg"
+        },
+        "createdAt": {
+          "timestampValue": "2026-06-10T17:15:04.401Z"
+        },
+        "updatedBy": {
+          "stringValue": "p5zSvB4B9Gh0E72y2FrAsN8LlZd2"
+        },
+        "userId": {
+          "stringValue": "jaX4tiFMNbYXlO5oD4k4k87WV592"
+        },
+        "scheduledAt": {
+          "timestampValue": "2026-06-12T00:00:00Z"
+        },
+        "paid": {
+          "booleanValue": false
+        },
+        "date": {
+          "stringValue": "Fri, Jun 12, 2026"
+        },
+        "type": {
+          "stringValue": "1-on-1"
+        },
+        "status": {
+          "stringValue": "cancelled"
+        },
+        "paymentStatus": {
+          "stringValue": "partially_paid"
+        },
+        "clientName": {
+          "stringValue": "KAIYA"
+        },
+        "updatedAt": {
+          "timestampValue": "2026-06-10T17:24:07.102Z"
+        },
+        "trainerPhotoUrl": {
+          "stringValue": "https://wrnimhuovvyhysiufffd.supabase.co/storage/v1/object/public/images/profiles/p5zSvB4B9Gh0E72y2FrAsN8LlZd2_1780571410836.jpg"
+        },
+        "trainer": {
+          "stringValue": "anh rith kach"
+        },
+        "trainerId": {
+          "stringValue": "p5zSvB4B9Gh0E72y2FrAsN8LlZd2"
+        },
+        "price": {
+          "integerValue": "313"
+        },
+        "portrait": {
+          "integerValue": "32"
+        }
+      },
+      "createTime": "2026-06-10T17:15:04.453539Z",
+      "updateTime": "2026-06-10T17:24:07.126456Z"
+    },
+    {
+      "name": "projects/gym-trainer-booking-app/databases/(default)/documents/bookings/WVnvNYVwag3YPONqbFkf",
+      "fields": {
+        "status": {
+          "stringValue": "cancelled"
+        },
+        "paymentStatus": {
+          "stringValue": "partially_paid"
+        },
+        "type": {
+          "stringValue": "Group"
+        },
+        "date": {
+          "stringValue": "Fri, Jun 12, 2026"
+        },
+        "trainerPhotoUrl": {
+          "stringValue": "https://wrnimhuovvyhysiufffd.supabase.co/storage/v1/object/public/images/profiles/p5zSvB4B9Gh0E72y2FrAsN8LlZd2_1780571410836.jpg"
+        },
+        "trainer": {
+          "stringValue": "anh rith kach"
+        },
+        "portrait": {
+          "integerValue": "32"
+        },
+        "trainerId": {
+          "stringValue": "p5zSvB4B9Gh0E72y2FrAsN8LlZd2"
+        },
+        "price": {
+          "integerValue": "313"
+        },
+        "clientName": {
+          "stringValue": "KAIYA"
+        },
+        "updatedAt": {
+          "timestampValue": "2026-06-10T17:40:12.072Z"
+        },
+        "amountPaid": {
+          "integerValue": "157"
+        },
+        "clientPhotoUrl": {
+          "stringValue": "https://wrnimhuovvyhysiufffd.supabase.co/storage/v1/object/public/images/profiles/jaX4tiFMNbYXlO5oD4k4k87WV592_1773381828538.jpg"
+        },
+        "createdAt": {
+          "timestampValue": "2026-06-10T17:32:56.438Z"
+        },
+        "updatedBy": {
+          "stringValue": "p5zSvB4B9Gh0E72y2FrAsN8LlZd2"
+        },
+        "trainerName": {
+          "stringValue": "anh rith kach"
+        },
+        "specialty": {
+          "stringValue": "Strength Training"
+        },
+        "time": {
+          "stringValue": "06:00 PM"
+        },
+        "paid": {
+          "booleanValue": false
+        },
+        "userId": {
+          "stringValue": "jaX4tiFMNbYXlO5oD4k4k87WV592"
+        },
+        "scheduledAt": {
+          "timestampValue": "2026-06-12T11:00:00Z"
+        }
+      },
+      "createTime": "2026-06-10T17:32:56.482677Z",
+      "updateTime": "2026-06-10T17:40:12.112323Z"
+    },
+    {
+      "name": "projects/gym-trainer-booking-app/databases/(default)/documents/bookings/kXjaM1jxmLJwDINTB2fm",
+      "fields": {
+        "userId": {
+          "stringValue": "lXcNsquz74e2UbAvNUXfZM4opW32"
+        },
+        "scheduledAt": {
+          "timestampValue": "2026-06-14T10:00:00Z"
+        },
+        "paid": {
+          "booleanValue": true
+        },
+        "specialty": {
+          "stringValue": "Cardio & HIIT"
+        },
+        "time": {
+          "stringValue": "05:00 PM - 06:00 PM"
+        },
+        "trainerName": {
+          "stringValue": "BUTH"
+        },
+        "discountApplied": {
+          "integerValue": "50"
+        },
+        "clientPhotoUrl": {
+          "stringValue": "https://wrnimhuovvyhysiufffd.supabase.co/storage/v1/object/public/images/profiles/lXcNsquz74e2UbAvNUXfZM4opW32_1781454047695.jpg"
+        },
+        "createdAt": {
+          "timestampValue": "2026-06-14T16:46:02.397Z"
+        },
+        "updatedBy": {
+          "stringValue": "h8bnso2mbTPWQF0KrEflU3DwieG2"
+        },
+        "amountPaid": {
+          "integerValue": "300"
+        },
+        "updatedAt": {
+          "timestampValue": "2026-06-14T17:11:31.232Z"
+        },
+        "clientName": {
+          "stringValue": "VINEA"
+        },
+        "portrait": {
+          "integerValue": "32"
+        },
+        "trainerId": {
+          "stringValue": "h8bnso2mbTPWQF0KrEflU3DwieG2"
+        },
+        "price": {
+          "integerValue": "300"
+        },
+        "trainerPhotoUrl": {
+          "stringValue": "https://wrnimhuovvyhysiufffd.supabase.co/storage/v1/object/public/images/profiles/h8bnso2mbTPWQF0KrEflU3DwieG2_1781422525774.jpg"
+        },
+        "trainer": {
+          "stringValue": "BUTH"
+        },
+        "type": {
+          "stringValue": "Group"
+        },
+        "date": {
+          "stringValue": "Sun, Jun 14, 2026"
+        },
+        "paymentStatus": {
+          "stringValue": "fully_paid"
+        },
+        "status": {
+          "stringValue": "confirmed"
+        }
+      },
+      "createTime": "2026-06-14T16:46:02.442945Z",
+      "updateTime": "2026-06-14T17:11:31.267537Z"
+    },
+    {
+      "name": "projects/gym-trainer-booking-app/databases/(default)/documents/bookings/wBFj8DH69c7Gm3yenjhw",
+      "fields": {
+        "userId": {
+          "stringValue": "jaX4tiFMNbYXlO5oD4k4k87WV592"
+        },
+        "statusReason": {
+          "stringValue": "Cancelled by trainer"
+        },
+        "paid": {
+          "booleanValue": false
+        },
+        "specialty": {
+          "stringValue": "Strength Training"
+        },
+        "time": {
+          "stringValue": "09:00 AM"
+        },
+        "trainerName": {
+          "stringValue": "anh rith kach"
+        },
+        "clientPhotoUrl": {
+          "stringValue": "https://wrnimhuovvyhysiufffd.supabase.co/storage/v1/object/public/images/profiles/jaX4tiFMNbYXlO5oD4k4k87WV592_1773381828538.jpg"
+        },
+        "createdAt": {
+          "timestampValue": "2026-06-09T03:13:10.530Z"
+        },
+        "updatedBy": {
+          "stringValue": "p5zSvB4B9Gh0E72y2FrAsN8LlZd2"
+        },
+        "amountPaid": {
+          "integerValue": "157"
+        },
+        "updatedAt": {
+          "timestampValue": "2026-06-10T11:33:51.933Z"
+        },
+        "clientName": {
+          "stringValue": "KAIYA"
+        },
+        "trainerId": {
+          "stringValue": "p5zSvB4B9Gh0E72y2FrAsN8LlZd2"
+        },
+        "price": {
+          "integerValue": "313"
+        },
+        "portrait": {
+          "integerValue": "32"
+        },
+        "trainerPhotoUrl": {
+          "stringValue": "https://wrnimhuovvyhysiufffd.supabase.co/storage/v1/object/public/images/profiles/p5zSvB4B9Gh0E72y2FrAsN8LlZd2_1780571410836.jpg"
+        },
+        "trainer": {
+          "stringValue": "anh rith kach"
+        },
+        "date": {
+          "stringValue": "Wed, Jun 10, 2026"
+        },
+        "type": {
+          "stringValue": "Group"
+        },
+        "paymentStatus": {
+          "stringValue": "partially_paid"
+        },
+        "status": {
+          "stringValue": "cancelled"
+        }
+      },
+      "createTime": "2026-06-09T03:13:10.591769Z",
+      "updateTime": "2026-06-10T11:33:51.953441Z"
+    }
+  ]
+}

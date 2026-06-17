@@ -1,80 +1,124 @@
-import 'dart:convert';
-import 'package:get/get.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../notifications/controllers/notifications_controller.dart';
 
-class WalletController extends GetxController {
-  static const _kBalance = 'wallet_balance';
-  static const _kSpent = 'wallet_spent';
-  static const _kSessions = 'wallet_sessions';
-  static const _kTopUps = 'wallet_topups';
-  static const _kTxList = 'wallet_transactions';
+class WalletState {
+  final double balance;
+  final double spentThisMonth;
+  final int totalSessions;
+  final int topUps;
+  final List<Map<String, dynamic>> transactions;
+  final bool isLoading;
 
-  // ─── Reactive state ───────────────────────────────────────────────────────
-  var balance = 255.0.obs;
-  var spentThisMonth = 270.0.obs;
-  var totalSessions = 7.obs;
-  var topUps = 2.obs;
+  WalletState({
+    required this.balance,
+    required this.spentThisMonth,
+    required this.totalSessions,
+    required this.topUps,
+    required this.transactions,
+    required this.isLoading,
+  });
 
-  final transactions =
-      <Map<String, dynamic>>[
-        {
-          'title': 'Session — Alex Carter',
-          'date': 'Mar 6, 2026',
-          'amount': -65,
-          'type': 'debit',
-          'portrait': 10,
-        },
-        {
-          'title': 'Session — Priya Shah',
-          'date': 'Mar 3, 2026',
-          'amount': -75,
-          'type': 'debit',
-          'portrait': 47,
-        },
-        {
-          'title': 'Top-up via Card',
-          'date': 'Mar 1, 2026',
-          'amount': 200,
-          'type': 'credit',
-        },
-        {
-          'title': 'Session — Jordan Miles',
-          'date': 'Feb 28, 2026',
-          'amount': -55,
-          'type': 'debit',
-          'portrait': 11,
-        },
-        {
-          'title': 'Session — Sam Rivera',
-          'date': 'Feb 24, 2026',
-          'amount': -70,
-          'type': 'debit',
-          'portrait': 12,
-        },
-        {
-          'title': 'Top-up via Card',
-          'date': 'Feb 20, 2026',
-          'amount': 300,
-          'type': 'credit',
-        },
-        {
-          'title': 'Session — Chris Lee',
-          'date': 'Feb 18, 2026',
-          'amount': -80,
-          'type': 'debit',
-          'portrait': 13,
-        },
-      ].obs;
+  WalletState copyWith({
+    double? balance,
+    double? spentThisMonth,
+    int? totalSessions,
+    int? topUps,
+    List<Map<String, dynamic>>? transactions,
+    bool? isLoading,
+  }) {
+    return WalletState(
+      balance: balance ?? this.balance,
+      spentThisMonth: spentThisMonth ?? this.spentThisMonth,
+      totalSessions: totalSessions ?? this.totalSessions,
+      topUps: topUps ?? this.topUps,
+      transactions: transactions ?? this.transactions,
+      isLoading: isLoading ?? this.isLoading,
+    );
+  }
+}
 
-  /// Groups all session debits by trainer name → total paid + session count.
+class WalletNotifier extends AutoDisposeNotifier<WalletState> {
+  final _firestore = FirebaseFirestore.instance;
+  final _auth = FirebaseAuth.instance;
+  StreamSubscription<DocumentSnapshot>? _userSub;
+  StreamSubscription<QuerySnapshot>? _txSub;
+
+  @override
+  WalletState build() {
+    ref.onDispose(() {
+      _userSub?.cancel();
+      _txSub?.cancel();
+    });
+    _listen();
+    return WalletState(
+      balance: 0.0,
+      spentThisMonth: 0.0,
+      totalSessions: 0,
+      topUps: 0,
+      transactions: const [],
+      isLoading: true,
+    );
+  }
+
+  void _listen() {
+    final user = _auth.currentUser;
+    if (user == null) {
+      state = state.copyWith(isLoading: false);
+      return;
+    }
+    _subscribeToUser(user.uid);
+    _subscribeToTransactions(user.uid);
+  }
+
+  void _subscribeToUser(String uid) {
+    _userSub = _firestore
+        .collection('users')
+        .doc(uid)
+        .snapshots()
+        .listen((doc) {
+      if (!doc.exists) return;
+      final data = doc.data() ?? {};
+      final balance = (data['walletBalance'] as num?)?.toDouble() ?? 0.0;
+      final spent = (data['walletSpentThisMonth'] as num?)?.toDouble() ?? 0.0;
+      state = state.copyWith(balance: balance, spentThisMonth: spent);
+    }, onError: (_) => state = state.copyWith(isLoading: false));
+  }
+
+  void _subscribeToTransactions(String uid) {
+    _txSub = _firestore
+        .collection('transactions')
+        .where('userId', isEqualTo: uid)
+        .orderBy('createdAt', descending: true)
+        .limit(100)
+        .snapshots()
+        .listen((snap) {
+      final txs = snap.docs.map((d) => {'id': d.id, ...d.data()}).toList();
+      final sessions = txs
+          .where((t) =>
+              t['type'] == 'debit' &&
+              (t['title'] as String? ?? '').startsWith('Session'))
+          .length;
+      final topUps =
+          txs.where((t) => t['type'] == 'credit').length;
+      state = state.copyWith(
+        transactions: txs,
+        totalSessions: sessions,
+        topUps: topUps,
+        isLoading: false,
+      );
+    }, onError: (_) => state = state.copyWith(isLoading: false));
+  }
+
   List<Map<String, dynamic>> get trainerSummary {
     final Map<String, Map<String, dynamic>> map = {};
-    for (final t in transactions) {
-      if (t['type'] != 'debit' || !(t['title'] as String).startsWith('Session'))
-        continue;
+    for (final t in state.transactions) {
+      if (t['type'] != 'debit' ||
+          !(t['title'] as String? ?? '').startsWith('Session')) continue;
       final name = (t['title'] as String).replaceFirst('Session — ', '');
-      final amount = (t['amount'] as int).abs();
+      final amount = ((t['amount'] as num?)?.toInt().abs()) ?? 0;
       if (map.containsKey(name)) {
         map[name]!['total'] = (map[name]!['total'] as int) + amount;
         map[name]!['count'] = (map[name]!['count'] as int) + 1;
@@ -84,6 +128,7 @@ class WalletController extends GetxController {
           'total': amount,
           'count': 1,
           'portrait': t['portrait'],
+          'trainerPhotoUrl': t['trainerPhotoUrl'],
         };
       }
     }
@@ -92,115 +137,133 @@ class WalletController extends GetxController {
     return list;
   }
 
-  // ─── Actions ──────────────────────────────────────────────────────────────
+  Future<void> addFunds(
+    double amount, {
+    required void Function(String msg) onNotifyUser,
+  }) async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+    final newBalance = state.balance + amount;
+    try {
+      final batch = _firestore.batch();
 
-  @override
-  void onInit() {
-    super.onInit();
-    _load();
-  }
+      // Update wallet balance on user doc
+      batch.update(_firestore.collection('users').doc(user.uid), {
+        'walletBalance': newBalance,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
 
-  Future<void> _load() async {
-    final prefs = await SharedPreferences.getInstance();
-    balance.value = prefs.getDouble(_kBalance) ?? balance.value;
-    spentThisMonth.value = prefs.getDouble(_kSpent) ?? spentThisMonth.value;
-    totalSessions.value = prefs.getInt(_kSessions) ?? totalSessions.value;
-    topUps.value = prefs.getInt(_kTopUps) ?? topUps.value;
-    final raw = prefs.getString(_kTxList);
-    if (raw != null) {
-      final List<dynamic> decoded = jsonDecode(raw);
-      transactions.value =
-          decoded.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      // Write transaction record
+      batch.set(_firestore.collection('transactions').doc(), {
+        'userId': user.uid,
+        'title': 'Top-up via Card',
+        'amount': amount.toInt(),
+        'type': 'credit',
+        'date': _today(),
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      await batch.commit();
+
+      _pushNotification(
+        title: 'Deposit Successful',
+        body:
+            '\$${amount.toStringAsFixed(0)} has been added to your wallet. New balance: \$${newBalance.toStringAsFixed(2)}.',
+        icon: 'payment',
+        color: 'neon',
+      );
+      onNotifyUser('\$${amount.toStringAsFixed(0)} added to your wallet.');
+    } catch (_) {
+      onNotifyUser('Failed to add funds. Please try again.');
     }
   }
 
-  Future<void> _save() async {
-    final prefs = await SharedPreferences.getInstance();
-    prefs.setDouble(_kBalance, balance.value);
-    prefs.setDouble(_kSpent, spentThisMonth.value);
-    prefs.setInt(_kSessions, totalSessions.value);
-    prefs.setInt(_kTopUps, topUps.value);
-    prefs.setString(_kTxList, jsonEncode(transactions.toList()));
-  }
-
-  void addFunds(double amount) {
-    balance.value += amount;
-    topUps.value += 1;
-    transactions.insert(0, {
-      'title': 'Top-up via Card',
-      'date': _today(),
-      'amount': amount.toInt(),
-      'type': 'credit',
-    });
-    _save();
-    _pushNotification(
-      title: 'Deposit Successful',
-      body:
-          '\$${amount.toStringAsFixed(0)} has been added to your wallet. New balance: \$${balance.value.toStringAsFixed(2)}.',
-      icon: 'payment',
-      color: 'neon',
-    );
-    Get.snackbar(
-      'Funds Added',
-      '\$${amount.toStringAsFixed(0)} added to your wallet.',
-      snackPosition: SnackPosition.BOTTOM,
-    );
-  }
-
-  /// Deducts [amount] from the wallet to pay for a trainer session.
-  /// Returns true if successful, false if insufficient balance.
-  bool payForSession(String trainerName, int amount, {int? portrait}) {
-    if (amount > balance.value) {
-      Get.snackbar(
-        'Insufficient Balance',
-        'Top up your wallet to pay for this session.',
-        snackPosition: SnackPosition.BOTTOM,
-      );
+  bool payForSession(
+    String trainerName,
+    int amount, {
+    int? portrait,
+    String? trainerPhotoUrl,
+    required void Function(String msg) onNotifyUser,
+  }) {
+    if (amount > state.balance) {
+      onNotifyUser('Top up your wallet to pay for this session.');
       return false;
     }
-    balance.value -= amount;
-    spentThisMonth.value += amount;
-    totalSessions.value += 1;
-    transactions.insert(0, {
-      'title': 'Session — $trainerName',
-      'date': _today(),
-      'amount': -amount,
-      'type': 'debit',
-      if (portrait != null) 'portrait': portrait,
-    });
-    _save();
+    _writeSessionPayment(trainerName, amount, portrait: portrait, trainerPhotoUrl: trainerPhotoUrl);
     return true;
   }
 
-  void withdraw(double amount) {
-    if (amount > balance.value) {
-      Get.snackbar(
-        'Insufficient Balance',
-        'You don\'t have enough funds.',
-        snackPosition: SnackPosition.BOTTOM,
-      );
+  Future<void> _writeSessionPayment(
+    String trainerName,
+    int amount, {
+    int? portrait,
+    String? trainerPhotoUrl,
+  }) async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+    final newBalance = state.balance - amount;
+    final newSpent = state.spentThisMonth + amount;
+    try {
+      final batch = _firestore.batch();
+      batch.update(_firestore.collection('users').doc(user.uid), {
+        'walletBalance': newBalance,
+        'walletSpentThisMonth': newSpent,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      final txData = {
+        'userId': user.uid,
+        'title': 'Session — $trainerName',
+        'amount': -amount,
+        'type': 'debit',
+        'date': _today(),
+        'createdAt': FieldValue.serverTimestamp(),
+        if (portrait != null) 'portrait': portrait,
+        if (trainerPhotoUrl != null && trainerPhotoUrl.isNotEmpty) 'trainerPhotoUrl': trainerPhotoUrl,
+      };
+      batch.set(_firestore.collection('transactions').doc(), txData);
+      await batch.commit();
+    } catch (_) {}
+  }
+
+  Future<void> withdraw(
+    double amount, {
+    required void Function(String msg) onNotifyUser,
+  }) async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+    if (amount > state.balance) {
+      onNotifyUser("You don't have enough funds.");
       return;
     }
-    balance.value -= amount;
-    transactions.insert(0, {
-      'title': 'Withdrawal',
-      'date': _today(),
-      'amount': -amount.toInt(),
-      'type': 'debit',
-    });
-    _save();
-    _pushNotification(
-      title: 'Withdrawal Submitted',
-      body:
-          '\$${amount.toStringAsFixed(0)} withdrawal is being processed. Funds arrive in 1-3 business days.',
-      icon: 'payment',
-      color: 'sky',
-    );
-    Get.snackbar(
-      'Withdrawal Submitted',
-      '\$${amount.toStringAsFixed(0)} will arrive in 1-3 business days.',
-      snackPosition: SnackPosition.BOTTOM,
-    );
+    final newBalance = state.balance - amount;
+    try {
+      final batch = _firestore.batch();
+      batch.update(_firestore.collection('users').doc(user.uid), {
+        'walletBalance': newBalance,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      batch.set(_firestore.collection('transactions').doc(), {
+        'userId': user.uid,
+        'title': 'Withdrawal',
+        'amount': -amount.toInt(),
+        'type': 'debit',
+        'date': _today(),
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      await batch.commit();
+
+      _pushNotification(
+        title: 'Withdrawal Submitted',
+        body:
+            '\$${amount.toStringAsFixed(0)} withdrawal is being processed. Funds arrive in 1-3 business days.',
+        icon: 'payment',
+        color: 'sky',
+      );
+      onNotifyUser(
+          '\$${amount.toStringAsFixed(0)} will arrive in 1-3 business days.');
+    } catch (_) {
+      onNotifyUser('Withdrawal failed. Please try again.');
+    }
   }
 
   void _pushNotification({
@@ -209,18 +272,16 @@ class WalletController extends GetxController {
     required String icon,
     required String color,
   }) {
-    if (Get.isRegistered<NotificationsController>()) {
-      Get.find<NotificationsController>().addNotification({
-        'title': title,
-        'body': body,
-        'time': 'Just now',
-        'icon': icon,
-        'read': false,
-        'color': color,
-        'route': '/wallet',
-        'routeArgs': null,
-      });
-    }
+    ref.read(notificationsNotifierProvider.notifier).addNotification({
+      'title': title,
+      'body': body,
+      'time': 'Just now',
+      'icon': icon,
+      'read': false,
+      'color': color,
+      'route': '/wallet',
+      'routeArgs': null,
+    });
   }
 
   String _today() {
@@ -243,3 +304,8 @@ class WalletController extends GetxController {
     return '${months[now.month]} ${now.day}, ${now.year}';
   }
 }
+
+final walletNotifierProvider =
+    AutoDisposeNotifierProvider<WalletNotifier, WalletState>(
+  () => WalletNotifier(),
+);

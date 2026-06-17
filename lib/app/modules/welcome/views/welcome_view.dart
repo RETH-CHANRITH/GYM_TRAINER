@@ -1,132 +1,168 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/cupertino.dart';
-import 'package:get/get.dart';
+import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../../../../config/glass_ui.dart';
-import '../controllers/welcome_controller.dart';
+import '../../../routes/app_router.dart' show Routes;
 
-// ─── Design Tokens (matching home_view) ────────────────────────────────────────
-const Color ink = Color(0xFF0A0A0F);
-const Color surface = Color(0xFF111118);
-const Color card = Color(0xFF17171F);
-const Color raised = Color(0xFF1E1E28);
-const Color stroke = Color(0xFF2A2A36);
-const Color neon = Color(0xFFCBFF47);
-const Color coral = Color(0xFFFF5C5C);
-const Color sky = Color(0xFF5CE8FF);
-const Color lilac = Color(0xFFA78BFA);
-const Color muted = Color(0xFF6B6B7E);
-
-class WelcomeView extends GetView<WelcomeController> {
-  const WelcomeView({Key? key}) : super(key: key);
+class WelcomeView extends StatelessWidget {
+  const WelcomeView({super.key});
 
   @override
   Widget build(BuildContext context) {
+    // Dynamic accent colour — follows the user's chosen theme.
+    final kNeon = Theme.of(context).colorScheme.primary;
     return Scaffold(
-      backgroundColor: ink,
+      backgroundColor: kInk,
       body: Stack(
         children: [
-          Positioned.fill(child: trainerBackground()),
-          SizedBox(
-            width: double.infinity,
-            height: double.infinity,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                // Top section with logo/welcome text
-                Padding(
-                  padding: const EdgeInsets.only(top: 100.0),
-                  child: Column(
-                    children: [
-                      Container(
-                        width: 160,
-                        height: 160,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(20),
-                          color: Colors.white,
-                          boxShadow: [
-                            BoxShadow(
-                              color: neon.withOpacity(0.3),
-                              blurRadius: 20,
-                              spreadRadius: 2,
-                            ),
-                          ],
-                        ),
-                        padding: const EdgeInsets.all(16),
-                        child: Image.asset(
-                          'assets/image/logo.png',
-                          fit: BoxFit.contain,
-                        ),
-                      ),
-                      const SizedBox(height: 30),
-                      const Text(
-                        'Welcome',
-                        style: TextStyle(
-                          fontSize: 36,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        'to Your Fitness Journey',
-                        style: TextStyle(fontSize: 18, color: muted),
-                      ),
-                    ],
-                  ),
-                ),
-
-                // Middle section with welcome message
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 30.0),
-                  child: Container(
-                    padding: const EdgeInsets.all(24),
+          // Deep premium gradient background
+          Positioned.fill(child: liquidBackground()),
+          
+          // Glow Orbs to add depth and neon vibes
+          const Positioned(
+            top: 80,
+            left: -50,
+            child: GlowOrb(color: kSky, radius: 150),
+          ),
+          Positioned(
+            bottom: 120,
+            right: -80,
+            child: GlowOrb(color: kNeon, radius: 180),
+          ),
+          
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
+              child: Column(
+                children: [
+                  const Spacer(flex: 2),
+                  
+                  // Premium Logo Container with Glassmorphism and Glow
+                  Container(
+                    width: 140,
+                    height: 140,
                     decoration: BoxDecoration(
-                      color: card,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: stroke),
+                      color: Colors.white.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(32),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.25),
+                        width: 1.5,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: kNeon.withOpacity(0.2),
+                          blurRadius: 30,
+                          spreadRadius: 2,
+                        ),
+                      ],
                     ),
+                    padding: const EdgeInsets.all(20),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.1),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      padding: const EdgeInsets.all(12),
+                      child: Image.asset(
+                        'assets/image/logo.png',
+                        fit: BoxFit.contain,
+                      ),
+                    ),
+                  ),
+                  
+                  const SizedBox(height: 36),
+                  
+                  // Welcome Header with Gradient Text
+                  ShaderMask(
+                    shaderCallback: (bounds) => LinearGradient(
+                      colors: [Colors.white, kNeon],
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                    ).createShader(bounds),
                     child: Text(
-                      'Get ready to transform your body and achieve your fitness goals with professional trainers.',
+                      'WELCOME',
+                      style: GoogleFonts.bebasNeue(
+                        fontSize: 56,
+                        color: Colors.white,
+                        letterSpacing: 3,
+                        height: 1.0,
+                      ),
                       textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: Colors.white.withOpacity(0.8),
-                        height: 1.6,
-                      ),
                     ),
                   ),
-                ),
-
-                // Bottom section with button
-                Padding(
-                  padding: const EdgeInsets.only(
-                    bottom: 50.0,
-                    left: 30,
-                    right: 30,
+                  
+                  const SizedBox(height: 8),
+                  
+                  Text(
+                    'TO YOUR FITNESS JOURNEY',
+                    style: GoogleFonts.dmSans(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: kMuted,
+                      letterSpacing: 2,
+                    ),
+                    textAlign: TextAlign.center,
                   ),
-                  child: SizedBox(
-                    width: double.infinity,
-                    height: 54,
-                    child: ElevatedButton(
-                      onPressed: () => controller.goToGetStarted(),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: neon,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
+                  
+                  const Spacer(flex: 1),
+                  
+                  // Description Glass Tile
+                  LiquidTile(
+                    radius: 24,
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            color: kNeon.withOpacity(0.1),
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: kNeon.withOpacity(0.2),
+                            ),
+                          ),
+                          child: Icon(
+                            Icons.bolt_rounded,
+                            color: kNeon,
+                            size: 26,
+                          ),
                         ),
-                      ),
-                      child: const Text(
-                        'Get Started',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: ink,
+                        const SizedBox(height: 16),
+                        Text(
+                          'Get ready to transform your body and achieve your fitness goals with professional personal trainers.',
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.dmSans(
+                            fontSize: 15,
+                            color: Colors.white.withOpacity(0.85),
+                            height: 1.6,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
-                      ),
+                      ],
                     ),
                   ),
-                ),
-              ],
+                  
+                  const Spacer(flex: 2),
+                  
+                  // Call-to-action Neon Button
+                  neonButton(
+                    label: 'GET STARTED',
+                    accent: kNeon,
+                    onPressed: () => context.go(Routes.GET_STARTED),
+                  ),
+                  
+                  const SizedBox(height: 12),
+                ],
+              ),
             ),
           ),
         ],

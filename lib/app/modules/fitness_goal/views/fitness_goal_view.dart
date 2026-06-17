@@ -1,23 +1,49 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
-
-import '../controllers/fitness_goal_controller.dart';
 import '../../../../config/glass_ui.dart';
+import '../../../providers/global_providers.dart';
+import '../../../routes/app_router.dart' show Routes;
 
-// ─── Design Tokens (matching home_view) ────────────────────────────────────
-class FitnessGoalView extends GetView<FitnessGoalController> {
-  const FitnessGoalView({Key? key}) : super(key: key);
+final selectedGoalProvider = StateProvider<String?>((ref) => null);
+
+final _goalsList = const [
+  {
+    'id': 'weight_loss',
+    'label': 'Weight Loss',
+    'icon': Icons.monitor_weight_rounded,
+  },
+  {
+    'id': 'muscle_gain',
+    'label': 'Muscle Gain',
+    'icon': Icons.fitness_center_rounded,
+  },
+  {
+    'id': 'endurance',
+    'label': 'Build Endurance',
+    'icon': Icons.directions_run_rounded,
+  },
+  {
+    'id': 'flexibility',
+    'label': 'Improve Flexibility',
+    'icon': Icons.self_improvement_rounded,
+  },
+];
+
+class FitnessGoalView extends ConsumerWidget {
+  const FitnessGoalView({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final selectedGoal = ref.watch(selectedGoalProvider);
+
     return Scaffold(
       backgroundColor: kInk,
       extendBodyBehindAppBar: true,
       appBar: glassAppBar(
         title: 'Fitness Goal',
-        onBack: () => controller.goBack(),
+        onBack: () => context.go(Routes.HEIGHT_INPUT),
       ),
       body: Stack(
         children: [
@@ -52,70 +78,71 @@ class FitnessGoalView extends GetView<FitnessGoalController> {
                   Expanded(
                     child: ListView.builder(
                       physics: const BouncingScrollPhysics(),
-                      itemCount: controller.goals.length,
+                      itemCount: _goalsList.length,
                       itemBuilder: (context, index) {
-                        final goal = controller.goals[index];
-                        return Obx(() {
-                          final isSelected =
-                              controller.selectedGoal.value == goal['id'];
-                          return GestureDetector(
-                            onTap:
-                                () =>
-                                    controller.selectGoal(goal['id'] as String),
-                            child: Padding(
-                              padding: const EdgeInsets.only(bottom: 12),
-                              child: LiquidTile(
-                                selected: isSelected,
-                                accent: kLilac,
-                                child: Row(
-                                  children: [
-                                    Text(
-                                      goal['icon'] as String,
-                                      style: const TextStyle(fontSize: 26),
-                                    ),
-                                    const SizedBox(width: 16),
-                                    Expanded(
-                                      child: Text(
-                                        goal['label'] as String,
-                                        style: GoogleFonts.dmSans(
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w600,
-                                          color:
-                                              isSelected
-                                                  ? kLilac
-                                                  : Colors.white,
-                                        ),
+                        final goal = _goalsList[index];
+                        final isSelected = selectedGoal == goal['id'];
+                        return GestureDetector(
+                           onTap: () => ref.read(selectedGoalProvider.notifier).state = goal['id'] as String,
+                          child: Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: LiquidTile(
+                              selected: isSelected,
+                              accent: kLilac,
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 42,
+                                    height: 42,
+                                    decoration: BoxDecoration(
+                                      color: (isSelected ? kLilac : Colors.white).withOpacity(0.12),
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(
+                                        color: (isSelected ? kLilac : Colors.white).withOpacity(0.24),
+                                        width: 1,
                                       ),
                                     ),
-                                    Container(
-                                      width: 22,
-                                      height: 22,
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        border: Border.all(
-                                          color: isSelected ? kLilac : kMuted,
-                                          width: 2,
-                                        ),
-                                        color:
-                                            isSelected
-                                                ? kLilac
-                                                : Colors.transparent,
-                                      ),
-                                      child:
-                                          isSelected
-                                              ? const Icon(
-                                                Icons.check,
-                                                color: kInk,
-                                                size: 14,
-                                              )
-                                              : null,
+                                    child: Icon(
+                                      goal['icon'] as IconData,
+                                      color: isSelected ? kLilac : Colors.white70,
+                                      size: 20,
                                     ),
-                                  ],
-                                ),
+                                  ),
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    child: Text(
+                                      goal['label'] as String,
+                                      style: GoogleFonts.dmSans(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w600,
+                                        color: isSelected ? kLilac : Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                  Container(
+                                    width: 22,
+                                    height: 22,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: isSelected ? kLilac : kMuted,
+                                        width: 2,
+                                      ),
+                                      color: isSelected ? kLilac : Colors.transparent,
+                                    ),
+                                    child: isSelected
+                                        ? const Icon(
+                                            Icons.check,
+                                            color: kInk,
+                                            size: 14,
+                                          )
+                                        : null,
+                                  ),
+                                ],
                               ),
                             ),
-                          );
-                        });
+                          ),
+                        );
                       },
                     ),
                   ),
@@ -123,7 +150,21 @@ class FitnessGoalView extends GetView<FitnessGoalController> {
                   neonButton(
                     label: 'Continue',
                     accent: kLilac,
-                    onPressed: () => controller.nextStep(),
+                    onPressed: () {
+                      final selected = ref.read(selectedGoalProvider);
+                      if (selected != null) {
+                        final label = _goalsList.firstWhere(
+                          (g) => g['id'] == selected,
+                          orElse: () => {'label': selected},
+                        )['label'] as String;
+                        ref.read(userProfileServiceProvider.notifier).setFitnessGoal(label);
+                        context.go(Routes.ACTIVITY_LEVEL);
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Please select your fitness goal')),
+                        );
+                      }
+                    },
                   ),
                   const SizedBox(height: 28),
                 ],

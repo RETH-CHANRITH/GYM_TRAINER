@@ -1,69 +1,545 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import '../../trainer/controllers/trainer_rating_controller.dart';
 import '../../../../config/glass_ui.dart';
-import '../../my_bookings/controllers/my_bookings_controller.dart';
-import '../../wallet/controllers/wallet_controller.dart';
 import '../../../services/favourites_service.dart';
+import '../../../services/bookings_service.dart';
+import '../../wallet/controllers/wallet_controller.dart';
 
-const Color ink = Color(0xFF0A0A0F);
-const Color surface = Color(0xFF111118);
-const Color card = Color(0xFF17171F);
-const Color raised = Color(0xFF1E1E28);
-const Color stroke = Color(0xFF2A2A36);
-const Color neon = Color(0xFFCBFF47);
 const Color coral = Color(0xFFFF5C5C);
 const Color sky = Color(0xFF5CE8FF);
 const Color lilac = Color(0xFFA78BFA);
-const Color muted = Color(0xFF6B6B7E);
 
-class FavouriteView extends StatefulWidget {
+class FavouriteView extends ConsumerStatefulWidget {
   const FavouriteView({super.key});
   @override
-  State<FavouriteView> createState() => _FavouriteViewState();
+  ConsumerState<FavouriteView> createState() => _FavouriteViewState();
 }
 
-class _FavouriteViewState extends State<FavouriteView> {
+class _FavouriteViewState extends ConsumerState<FavouriteView> {
+  Color get ink => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF0A0A0F) : const Color(0xFFF9F9FC);
+  Color get surface => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF111118) : const Color(0xFFFFFFFF);
+  Color get card => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF17171F) : const Color(0xFFFFFFFF);
+  Color get raised => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF1E1E28) : const Color(0xFFF0EFF5);
+  Color get stroke => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF2A2A36) : const Color(0xFFE5E7EB);
+  Color get neon => Theme.of(context).colorScheme.primary;
+  Color get muted => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF6B6B7E) : Colors.black45;
+  Color get text => Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black87;
+
   int _mainTab = 0; // 0 = Favourites, 1 = My Bookings
   int _bookingTab = 0; // 0 = Upcoming,   1 = Past
 
-  late final MyBookingsController _bookingsCtrl;
-  late final FavouritesService _favSvc;
+  Future<void> _cancelBooking(Map<String, dynamic> booking) async {
+    final id = booking['id'] as String? ?? '';
+    if (id.isEmpty) return;
+    await ref.read(bookingsServiceProvider.notifier).cancelBooking(id);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Your session has been cancelled.'),
+        backgroundColor: coral,
+      ),
+    );
+  }
 
-  @override
-  void initState() {
-    super.initState();
-    _favSvc = Get.find<FavouritesService>();
-    if (!Get.isRegistered<WalletController>()) {
-      Get.put<WalletController>(WalletController(), permanent: false);
-    }
-    if (!Get.isRegistered<MyBookingsController>()) {
-      Get.put<MyBookingsController>(MyBookingsController(), permanent: false);
-    }
-    _bookingsCtrl = Get.find<MyBookingsController>();
+  Future<void> _payForSession(Map<String, dynamic> b) async {
+    final booking = b;
+    final id = booking['id'] as String? ?? '';
+    final trainerName = (booking['trainerName'] ?? booking['trainer'] ?? '') as String;
+    final totalPrice = (booking['price'] as num?)?.toInt() ?? 0;
+    final portrait = booking['portrait'] as int?;
+
+    final discountApplied = (booking['discountApplied'] as num?)?.toInt() ?? 0;
+    final hasDiscount = discountApplied > 0;
+    final targetPrice = hasDiscount 
+        ? (totalPrice * (1 - (discountApplied / 100))).round() 
+        : totalPrice;
+
+    final amountPaid = (booking['amountPaid'] as num?)?.toInt() ?? 0;
+    final remainingPrice = targetPrice - amountPaid;
+    final hasPaidDeposit = !hasDiscount && amountPaid > 0 && amountPaid < targetPrice;
+
+    final middlePrice = (targetPrice / 2).round();
+    int selectedAmount = hasPaidDeposit ? remainingPrice : targetPrice; // Default to remaining or full
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (sheetContext, setSheetState) {
+            final balance = ref.read(walletNotifierProvider).balance;
+            final hasSufficientFunds = balance >= selectedAmount;
+
+            return Container(
+              decoration: BoxDecoration(
+                color: surface, // surface
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+                border: Border(
+                  top: BorderSide(color: stroke, width: 1.5),
+                ),
+              ),
+              padding: EdgeInsets.fromLTRB(
+                24,
+                16,
+                24,
+                MediaQuery.of(sheetContext).viewInsets.bottom + 28,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: stroke,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Center(
+                    child: Text(
+                      'Session Payment Options',
+                      style: TextStyle(
+                        color: text,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.3,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Center(
+                    child: Text(
+                      'Select a payment plan for your session with $trainerName',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: muted,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Session Summary Header
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: card,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: stroke),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: stroke),
+                          ),
+                          child: PremiumAvatar(
+                            name: trainerName,
+                            customPhotoUrl: booking['trainerPhotoUrl']?.toString(),
+                            size: 44,
+                            borderRadius: 10,
+                            isTrainer: true,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                trainerName,
+                                style: TextStyle(
+                                  color: text,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              Text(
+                                (booking['specialty'] ?? booking['sessionType'] ?? 'Strength Training').toString(),
+                                style: TextStyle(color: muted, fontSize: 12),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  if (hasPaidDeposit) ...[
+                    // Render single option card for remaining balance
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: neon.withOpacity(0.04),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: neon,
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            CupertinoIcons.check_mark_circled_solid,
+                            color: neon,
+                            size: 22,
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Remaining Balance',
+                                  style: TextStyle(
+                                    color: text,
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Pay the remaining session balance (50%)',
+                                  style: TextStyle(
+                                    color: muted,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Text(
+                            '\$$remainingPrice',
+                            style: TextStyle(
+                              color: neon,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ] else if (hasDiscount) ...[
+                    // Render single option card for full discounted price
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: neon.withOpacity(0.04),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: neon,
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            CupertinoIcons.check_mark_circled_solid,
+                            color: neon,
+                            size: 22,
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Full Session Payment',
+                                  style: TextStyle(
+                                    color: text,
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Pay the discounted session fee ($discountApplied% Off)',
+                                  style: TextStyle(
+                                    color: muted,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Text(
+                            '\$$targetPrice',
+                            style: TextStyle(
+                              color: neon,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ] else ...[
+                    // Option 1: Middle Session (50%)
+                    GestureDetector(
+                      onTap: () {
+                        setSheetState(() {
+                          selectedAmount = middlePrice;
+                        });
+                        HapticFeedback.selectionClick();
+                      },
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: selectedAmount == middlePrice ? neon.withOpacity(0.04) : card,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: selectedAmount == middlePrice ? neon : stroke,
+                            width: selectedAmount == middlePrice ? 1.5 : 1.0,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              selectedAmount == middlePrice
+                                  ? CupertinoIcons.check_mark_circled_solid
+                                  : CupertinoIcons.circle,
+                              color: selectedAmount == middlePrice ? neon : muted,
+                              size: 22,
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Middle Session',
+                                    style: TextStyle(
+                                      color: text,
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'Pay 50% of the session fee now',
+                                    style: TextStyle(
+                                      color: muted,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Text(
+                              '\$$middlePrice',
+                              style: TextStyle(
+                                color: selectedAmount == middlePrice ? neon : text,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Option 2: Full Session (100%)
+                    GestureDetector(
+                      onTap: () {
+                        setSheetState(() {
+                          selectedAmount = totalPrice;
+                        });
+                        HapticFeedback.selectionClick();
+                      },
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: selectedAmount == totalPrice ? neon.withOpacity(0.04) : card,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: selectedAmount == totalPrice ? neon : stroke,
+                            width: selectedAmount == totalPrice ? 1.5 : 1.0,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              selectedAmount == totalPrice
+                                  ? CupertinoIcons.check_mark_circled_solid
+                                  : CupertinoIcons.circle,
+                              color: selectedAmount == totalPrice ? neon : muted,
+                              size: 22,
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Full Session',
+                                    style: TextStyle(
+                                      color: text,
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'Pay 100% of the session fee now',
+                                    style: TextStyle(
+                                      color: muted,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Text(
+                              '\$$totalPrice',
+                              style: TextStyle(
+                                color: selectedAmount == totalPrice ? neon : text,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 20),
+
+                  // Wallet Balance Summary
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: raised,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: stroke),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Available Balance',
+                          style: TextStyle(
+                            color: muted,
+                            fontSize: 13,
+                          ),
+                        ),
+                        Text(
+                          '\$${balance.toStringAsFixed(2)}',
+                          style: TextStyle(
+                            color: text,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Pay Button
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () async {
+                        HapticFeedback.mediumImpact();
+                        Navigator.pop(sheetContext); // Close selection sheet
+
+                        final success = ref.read(walletNotifierProvider.notifier).payForSession(
+                          trainerName,
+                          selectedAmount,
+                          portrait: portrait,
+                          trainerPhotoUrl: booking['trainerPhotoUrl'],
+                          onNotifyUser: (msg) {
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(msg), backgroundColor: coral),
+                            );
+                          },
+                        );
+
+                        if (success && id.isNotEmpty) {
+                          await ref.read(bookingsServiceProvider.notifier).markPaid(id, selectedAmount);
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Payment Successful: \$$selectedAmount paid for your session with $trainerName.'),
+                              backgroundColor: neon,
+                            ),
+                          );
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: hasSufficientFunds ? neon : raised,
+                        foregroundColor: hasSufficientFunds ? ink : muted,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        elevation: hasSufficientFunds ? 4 : 0,
+                      ),
+                      child: Text(
+                        hasSufficientFunds
+                            ? 'Confirm & Pay \$$selectedAmount'
+                            : 'Insufficient Funds (Top up)',
+                        style: TextStyle(
+                          color: hasSufficientFunds ? ink : muted,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final favourites = ref.watch(favouritesServiceProvider);
+    final bookingsState = ref.watch(bookingsServiceProvider);
+    ref.watch(walletNotifierProvider);
+
     return Scaffold(
       backgroundColor: ink,
       body: Stack(
         children: [
-          Positioned.fill(child: trainerBackground()),
+          Positioned.fill(child: trainerBackground(context)),
           SafeArea(
             bottom: false,
             child: Column(
               children: [
-                _buildHeader(),
+                _buildHeader(favourites.length),
                 const SizedBox(height: 24),
                 _buildMainTabs(),
                 const SizedBox(height: 20),
                 Expanded(
                   child:
                       _mainTab == 0
-                          ? _buildFavouritesList()
-                          : _buildBookingsSection(),
+                           ? _buildFavouritesList(favourites)
+                           : _buildBookingsSection(bookingsState),
                 ),
               ],
             ),
@@ -73,7 +549,7 @@ class _FavouriteViewState extends State<FavouriteView> {
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(int count) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
       child: Row(
@@ -101,21 +577,19 @@ class _FavouriteViewState extends State<FavouriteView> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'My Favourites',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: text,
                     fontSize: 24,
                     fontWeight: FontWeight.w800,
                     letterSpacing: -0.5,
                   ),
                 ),
                 const SizedBox(height: 2),
-                Obx(
-                  () => Text(
-                    '${_favSvc.favourites.length} trainer${_favSvc.favourites.length == 1 ? '' : 's'} saved',
-                    style: TextStyle(color: muted, fontSize: 13),
-                  ),
+                Text(
+                  '$count trainer${count == 1 ? '' : 's'} saved',
+                  style: TextStyle(color: muted, fontSize: 13),
                 ),
               ],
             ),
@@ -167,62 +641,59 @@ class _FavouriteViewState extends State<FavouriteView> {
   }
 
   // ─── Favourites tab ──────────────────────────────────────────────────────
-  Widget _buildFavouritesList() {
-    return Obx(() {
-      final list = _favSvc.favourites;
-      if (list.isEmpty) {
-        return Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                width: 80,
-                height: 80,
-                decoration: BoxDecoration(
-                  color: card,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: stroke),
-                ),
-                child: Icon(CupertinoIcons.heart, color: muted, size: 36),
+  Widget _buildFavouritesList(List<Map<String, dynamic>> list) {
+    if (list.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                color: card,
+                shape: BoxShape.circle,
+                border: Border.all(color: stroke),
               ),
-              const SizedBox(height: 20),
-              const Text(
-                'No favourites yet',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                ),
+              child: Icon(CupertinoIcons.heart, color: muted, size: 36),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'No favourites yet',
+              style: TextStyle(
+                color: text,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
               ),
-              const SizedBox(height: 8),
-              Text(
-                'Heart a trainer from Search or Home',
-                style: TextStyle(color: muted, fontSize: 14),
-              ),
-            ],
-          ),
-        );
-      }
-      return ListView.builder(
-        physics: const BouncingScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
-        itemCount: list.length,
-        itemBuilder: (context, index) => _buildTrainerCard(list[index], index),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Heart a trainer from Search or Home',
+              style: TextStyle(color: muted, fontSize: 14),
+            ),
+          ],
+        ),
       );
-    });
+    }
+    return ListView.builder(
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
+      itemCount: list.length,
+      itemBuilder: (context, index) => _buildTrainerCard(list[index], index),
+    );
   }
 
   // ─── My Bookings tab ────────────────────────────────────────────────────
-  Widget _buildBookingsSection() {
+  Widget _buildBookingsSection(BookingsState bookingsState) {
     return Column(
       children: [
         _buildBookingSubTabs(),
         const SizedBox(height: 12),
         Expanded(
-          child: GetX<MyBookingsController>(
-            builder: (ctrl) {
+          child: Builder(
+            builder: (context) {
               final list =
-                  _bookingTab == 0 ? ctrl.upcomingBookings : ctrl.pastBookings;
+                  _bookingTab == 0 ? bookingsState.upcomingBookings : bookingsState.pastBookings;
               if (list.isEmpty) {
                 return Center(
                   child: Column(
@@ -299,7 +770,7 @@ class _FavouriteViewState extends State<FavouriteView> {
     Map<String, dynamic> b,
     int index,
   ) {
-    final status = b['status'] as String;
+    final status = (b['status'] ?? 'pending').toString();
     final Color statusColor =
         status == 'confirmed'
             ? neon
@@ -309,8 +780,29 @@ class _FavouriteViewState extends State<FavouriteView> {
             ? lilac
             : coral;
     final bool isActive = status == 'confirmed' || status == 'pending';
-    final Color paymentColor =
-        b['paid'] == true ? neon : const Color(0xFFFF8A8A);
+
+    final paid = b['paid'] == true;
+    final amountPaid = (b['amountPaid'] as num?)?.toInt() ?? 0;
+    final price = (b['price'] as num?)?.toInt() ?? 0;
+    final discountApplied = (b['discountApplied'] as num?)?.toInt() ?? 0;
+    final targetPrice = discountApplied > 0 
+        ? (price * (1 - (discountApplied / 100))).round() 
+        : price;
+    final remaining = targetPrice - amountPaid;
+    final paymentStatus = b['paymentStatus'] as String? ?? (paid ? 'fully_paid' : (amountPaid > 0 ? 'partially_paid' : 'unpaid'));
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final Color paymentColor = paymentStatus == 'fully_paid'
+        ? neon
+        : paymentStatus == 'partially_paid'
+            ? (isDark ? const Color(0xFFFFBB33) : const Color(0xFFD97706))
+            : const Color(0xFFFF5C5C);
+
+    final String paymentText = paymentStatus == 'fully_paid'
+        ? 'Paid'
+        : paymentStatus == 'partially_paid'
+            ? '50% Paid (\$$amountPaid paid / \$$remaining left)'
+            : 'Unpaid';
 
     HapticFeedback.lightImpact();
     showModalBottomSheet(
@@ -354,11 +846,11 @@ class _FavouriteViewState extends State<FavouriteView> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  const Center(
+                  Center(
                     child: Text(
                       'Booking Details',
                       style: TextStyle(
-                        color: Colors.white,
+                        color: text,
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
                         letterSpacing: 0.2,
@@ -366,79 +858,100 @@ class _FavouriteViewState extends State<FavouriteView> {
                     ),
                   ),
                   const SizedBox(height: 14),
-                  Row(
-                    children: [
-                      Container(
-                        width: 56,
-                        height: 56,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: stroke),
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {
+                      Navigator.pop(context);
+                      context.push(
+                        '/trainer-details',
+                        extra: {
+                          'id': b['trainerId'] ?? '',
+                          'trainerId': b['trainerId'] ?? '',
+                          'name': b['trainer'] ?? b['trainerName'] ?? 'Trainer',
+                          'specialty': b['specialty'] ?? 'Personal Training',
+                          'portrait': b['portrait'] ?? 10,
+                          'price': b['price'] ?? 0,
+                          'image': b['trainerPhotoUrl'] ?? '',
+                          'isAvailable': true,
+                        },
+                      );
+                    },
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 56,
+                          height: 56,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: stroke),
+                          ),
+                            child: PremiumAvatar(
+                              name: (b['trainer'] ?? b['trainerName'] ?? 'Trainer').toString(),
+                              customPhotoUrl: b['trainerPhotoUrl']?.toString(),
+                              size: 56,
+                              borderRadius: 14,
+                              isTrainer: true,
+                            ),
                         ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(14),
-                          child:
-                              b['portrait'] != null
-                                  ? Image.network(
-                                    'https://randomuser.me/api/portraits/men/${b['portrait']}.jpg',
-                                    fit: BoxFit.cover,
-                                    errorBuilder:
-                                        (_, __, ___) => const Icon(
-                                          CupertinoIcons.person_fill,
-                                          color: neon,
-                                          size: 28,
-                                        ),
-                                  )
-                                  : const Icon(
-                                    CupertinoIcons.person_fill,
-                                    color: neon,
-                                    size: 28,
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      (b['trainer'] ?? b['trainerName'] ?? 'Trainer').toString(),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: text,
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 18,
+                                      ),
+                                    ),
                                   ),
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              b['trainer'] as String,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w800,
-                                fontSize: 18,
+                                  const SizedBox(width: 6),
+                                  Icon(
+                                    CupertinoIcons.chevron_right,
+                                    color: muted,
+                                    size: 14,
+                                  ),
+                                ],
                               ),
-                            ),
-                            const SizedBox(height: 3),
-                            Text(
-                              b['specialty'] as String,
-                              style: TextStyle(color: muted, fontSize: 13),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: statusColor.withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                            color: statusColor.withOpacity(0.4),
+                              const SizedBox(height: 3),
+                              Text(
+                                (b['specialty'] ?? 'Personal Training').toString(),
+                                style: TextStyle(color: muted, fontSize: 13),
+                              ),
+                            ],
                           ),
                         ),
-                        child: Text(
-                          status[0].toUpperCase() + status.substring(1),
-                          style: TextStyle(
-                            color: statusColor,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 12,
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: statusColor.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: statusColor.withOpacity(0.4),
+                            ),
+                          ),
+                          child: Text(
+                            status.isEmpty ? '' : status[0].toUpperCase() + status.substring(1).toLowerCase(),
+                            style: TextStyle(
+                              color: statusColor,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12,
+                            ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 16),
                   Container(height: 1, color: stroke),
@@ -446,28 +959,30 @@ class _FavouriteViewState extends State<FavouriteView> {
                   _detailRow(
                     CupertinoIcons.calendar,
                     'Date',
-                    b['date'] as String,
+                    (b['date'] ?? '').toString(),
                   ),
                   const SizedBox(height: 10),
-                  _detailRow(CupertinoIcons.clock, 'Time', b['time'] as String),
+                  _detailRow(CupertinoIcons.clock, 'Time', (b['time'] ?? '').toString()),
                   const SizedBox(height: 10),
                   _detailRow(
                     CupertinoIcons.person_2,
                     'Type',
-                    b['type'] as String,
+                    (b['type'] ?? '1-on-1').toString(),
                   ),
                   const SizedBox(height: 10),
                   _detailRow(
                     CupertinoIcons.money_dollar_circle,
                     'Price',
-                    '\$${b['price']}',
+                    discountApplied > 0 
+                        ? '\$$targetPrice (\$$price - $discountApplied%)' 
+                        : '\$$price',
                     valueColor: neon,
                   ),
                   const SizedBox(height: 10),
                   _detailRow(
                     CupertinoIcons.checkmark_shield,
                     'Payment',
-                    b['paid'] == true ? 'Paid' : 'Unpaid',
+                    paymentText,
                     valueColor: paymentColor,
                   ),
                   const SizedBox(height: 18),
@@ -479,7 +994,7 @@ class _FavouriteViewState extends State<FavouriteView> {
                             onPressed: () {
                               HapticFeedback.selectionClick();
                               Navigator.pop(context);
-                              _bookingsCtrl.cancelBooking(index);
+                              _cancelBooking(b);
                             },
                             style: OutlinedButton.styleFrom(
                               foregroundColor: coral,
@@ -497,66 +1012,66 @@ class _FavouriteViewState extends State<FavouriteView> {
                         ),
                         const SizedBox(width: 12),
                         Expanded(
-                          child:
-                              b['paid'] == true
-                                  ? Container(
+                          child: paymentStatus == 'fully_paid'
+                              ? Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 14,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: neon.withOpacity(0.12),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: neon.withOpacity(0.35),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        CupertinoIcons.checkmark_circle_fill,
+                                        color: neon,
+                                        size: 14,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        'Paid',
+                                        style: TextStyle(
+                                          color: neon,
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              : ElevatedButton(
+                                  onPressed: () {
+                                    HapticFeedback.selectionClick();
+                                    Navigator.pop(context);
+                                    _payForSession(b);
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: paymentStatus == 'partially_paid' ? (Theme.of(context).brightness == Brightness.dark ? const Color(0xFFFFBB33) : const Color(0xFFD97706)) : neon,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
                                     padding: const EdgeInsets.symmetric(
                                       vertical: 14,
                                     ),
-                                    decoration: BoxDecoration(
-                                      color: neon.withOpacity(0.12),
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(
-                                        color: neon.withOpacity(0.35),
-                                      ),
-                                    ),
-                                    child: const Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        Icon(
-                                          CupertinoIcons.checkmark_circle_fill,
-                                          color: neon,
-                                          size: 14,
-                                        ),
-                                        SizedBox(width: 6),
-                                        Text(
-                                          'Paid',
-                                          style: TextStyle(
-                                            color: neon,
-                                            fontWeight: FontWeight.w700,
-                                            fontSize: 13,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  )
-                                  : ElevatedButton(
-                                    onPressed: () {
-                                      HapticFeedback.selectionClick();
-                                      Navigator.pop(context);
-                                      _bookingsCtrl.payForSession(index);
-                                    },
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: neon,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      padding: const EdgeInsets.symmetric(
-                                        vertical: 14,
-                                      ),
-                                      elevation: 6,
-                                      shadowColor: neon.withOpacity(0.4),
-                                    ),
-                                    child: Text(
-                                      'Pay \$${b['price']}',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 15,
-                                        color: ink,
-                                      ),
+                                    elevation: 6,
+                                    shadowColor: (paymentStatus == 'partially_paid' ? (Theme.of(context).brightness == Brightness.dark ? const Color(0xFFFFBB33) : const Color(0xFFD97706)) : neon).withOpacity(0.4),
+                                  ),
+                                  child: Text(
+                                    paymentStatus == 'partially_paid'
+                                        ? 'Pay Balance (\$$remaining)'
+                                        : 'Pay \$$targetPrice',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 15,
+                                      color: paymentStatus == 'partially_paid' ? Colors.white : ink,
                                     ),
                                   ),
+                                ),
                         ),
                       ],
                     ),
@@ -598,7 +1113,7 @@ class _FavouriteViewState extends State<FavouriteView> {
     IconData icon,
     String label,
     String value, {
-    Color valueColor = Colors.white,
+    Color? valueColor,
   }) {
     return Row(
       children: [
@@ -618,7 +1133,7 @@ class _FavouriteViewState extends State<FavouriteView> {
         Text(
           value,
           style: TextStyle(
-            color: valueColor,
+            color: valueColor ?? text,
             fontWeight: FontWeight.w600,
             fontSize: 13,
           ),
@@ -628,7 +1143,7 @@ class _FavouriteViewState extends State<FavouriteView> {
   }
 
   Widget _buildBookingCard(Map<String, dynamic> b, int index) {
-    final status = b['status'] as String;
+    final status = (b['status'] ?? 'pending').toString();
     final Color statusColor =
         status == 'confirmed'
             ? neon
@@ -637,6 +1152,12 @@ class _FavouriteViewState extends State<FavouriteView> {
             : status == 'completed'
             ? lilac
             : coral;
+
+    final paid = b['paid'] == true;
+    final amountPaid = (b['amountPaid'] as num?)?.toInt() ?? 0;
+    final price = (b['price'] as num?)?.toInt() ?? 0;
+    final remaining = price - amountPaid;
+    final paymentStatus = b['paymentStatus'] as String? ?? (paid ? 'fully_paid' : (amountPaid > 0 ? 'partially_paid' : 'unpaid'));
 
     return GestureDetector(
       onTap: () => _showBookingDetail(context, b, index),
@@ -661,26 +1182,13 @@ class _FavouriteViewState extends State<FavouriteView> {
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: neon.withOpacity(0.25)),
                   ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child:
-                        b['portrait'] != null
-                            ? Image.network(
-                              'https://randomuser.me/api/portraits/men/${b['portrait']}.jpg',
-                              fit: BoxFit.cover,
-                              errorBuilder:
-                                  (_, __, ___) => const Icon(
-                                    CupertinoIcons.person_fill,
-                                    color: neon,
-                                    size: 22,
-                                  ),
-                            )
-                            : const Icon(
-                              CupertinoIcons.person_fill,
-                              color: neon,
-                              size: 22,
-                            ),
-                  ),
+                    child: PremiumAvatar(
+                      name: (b['trainer'] ?? b['trainerName'] ?? 'Trainer').toString(),
+                      customPhotoUrl: b['trainerPhotoUrl']?.toString(),
+                      size: 46,
+                      borderRadius: 12,
+                      isTrainer: true,
+                    ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -688,15 +1196,15 @@ class _FavouriteViewState extends State<FavouriteView> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        b['trainer'] as String,
-                        style: const TextStyle(
-                          color: Colors.white,
+                        (b['trainer'] ?? b['trainerName'] ?? 'Trainer').toString(),
+                        style: TextStyle(
+                          color: text,
                           fontWeight: FontWeight.w700,
                           fontSize: 15,
                         ),
                       ),
                       Text(
-                        b['specialty'] as String,
+                        (b['specialty'] ?? 'Personal Training').toString(),
                         style: TextStyle(color: muted, fontSize: 12),
                       ),
                     ],
@@ -713,7 +1221,7 @@ class _FavouriteViewState extends State<FavouriteView> {
                     border: Border.all(color: statusColor.withOpacity(0.35)),
                   ),
                   child: Text(
-                    status[0].toUpperCase() + status.substring(1),
+                    status.isEmpty ? '' : status[0].toUpperCase() + status.substring(1).toLowerCase(),
                     style: TextStyle(
                       color: statusColor,
                       fontWeight: FontWeight.w600,
@@ -728,11 +1236,22 @@ class _FavouriteViewState extends State<FavouriteView> {
             const SizedBox(height: 12),
             Row(
               children: [
-                _infoChip(CupertinoIcons.calendar, b['date'] as String),
+                _infoChip(CupertinoIcons.calendar, (b['date'] ?? '').toString()),
                 const SizedBox(width: 14),
-                _infoChip(CupertinoIcons.clock, b['time'] as String),
+                _infoChip(CupertinoIcons.clock, (b['time'] ?? '').toString()),
                 const SizedBox(width: 14),
-                _infoChip(CupertinoIcons.person_2, b['type'] as String),
+                _paymentInfoChip(
+                  paymentStatus == 'fully_paid'
+                      ? 'Fully Paid'
+                      : paymentStatus == 'partially_paid'
+                          ? '50% Paid'
+                          : 'Unpaid',
+                  paymentStatus == 'fully_paid'
+                      ? neon
+                      : paymentStatus == 'partially_paid'
+                          ? (Theme.of(context).brightness == Brightness.dark ? const Color(0xFFFFBB33) : const Color(0xFFD97706))
+                          : const Color(0xFFFF5C5C),
+                ),
               ],
             ),
             if (status == 'confirmed' || status == 'pending') ...[
@@ -741,7 +1260,7 @@ class _FavouriteViewState extends State<FavouriteView> {
                 children: [
                   Expanded(
                     child: OutlinedButton(
-                      onPressed: () => _bookingsCtrl.cancelBooking(index),
+                      onPressed: () => _cancelBooking(b),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: coral,
                         side: const BorderSide(color: coral),
@@ -758,57 +1277,57 @@ class _FavouriteViewState extends State<FavouriteView> {
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child:
-                        b['paid'] == true
-                            ? Container(
-                              padding: const EdgeInsets.symmetric(vertical: 10),
-                              decoration: BoxDecoration(
-                                color: neon.withOpacity(0.12),
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(
-                                  color: neon.withOpacity(0.35),
-                                ),
-                              ),
-                              child: const Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    CupertinoIcons.checkmark_circle_fill,
-                                    color: neon,
-                                    size: 14,
-                                  ),
-                                  SizedBox(width: 6),
-                                  Text(
-                                    'Paid',
-                                    style: TextStyle(
-                                      color: neon,
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 13,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            )
-                            : ElevatedButton(
-                              onPressed:
-                                  () => _bookingsCtrl.payForSession(index),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: neon,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 10,
-                                ),
-                              ),
-                              child: Text(
-                                'Pay \$${b['price']}',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  color: ink,
-                                ),
+                    child: paymentStatus == 'fully_paid'
+                        ? Container(
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            decoration: BoxDecoration(
+                              color: neon.withOpacity(0.12),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: neon.withOpacity(0.35),
                               ),
                             ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  CupertinoIcons.checkmark_circle_fill,
+                                  color: neon,
+                                  size: 14,
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  'Paid',
+                                  style: TextStyle(
+                                    color: neon,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        : ElevatedButton(
+                            onPressed: () => _payForSession(b),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: paymentStatus == 'partially_paid' ? (Theme.of(context).brightness == Brightness.dark ? const Color(0xFFFFBB33) : const Color(0xFFD97706)) : neon,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 10,
+                              ),
+                            ),
+                            child: Text(
+                              paymentStatus == 'partially_paid'
+                                  ? 'Pay Balance (\$$remaining)'
+                                  : 'Pay \$${b['price']}',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: paymentStatus == 'partially_paid' ? Colors.white : ink,
+                              ),
+                            ),
+                          ),
                   ),
                 ],
               ),
@@ -829,10 +1348,110 @@ class _FavouriteViewState extends State<FavouriteView> {
     );
   }
 
+  Widget _paymentInfoChip(String label, Color color) {
+    return Row(
+      children: [
+        Icon(CupertinoIcons.creditcard_fill, color: color, size: 13),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: TextStyle(
+            color: color,
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ─── Trainer card ───────────────────────────────────────────────────────
+  bool _isProfileAvailable(Map<String, dynamic> profile, dynamic fallback) {
+    final raw = profile['availability'];
+    if (raw is Map) {
+      for (final day in raw.values) {
+        if (day is Map && day['enabled'] == true) {
+          return true;
+        }
+      }
+    }
+    return fallback == true;
+  }
+
   // ─── Trainer card ───────────────────────────────────────────────────────
   Widget _buildTrainerCard(Map<String, dynamic> t, int index) {
-    final bool isAvailable =
-        (t['available'] ?? t['isAvailable'] ?? false) as bool;
+    final String trainerId = (t['trainerId'] ?? t['id'] ?? '').toString().trim();
+    final bool isSlug = trainerId.isEmpty || trainerId.contains('_') || trainerId.length < 20;
+    if (isSlug) {
+      final bool isAvailable = (t['available'] ?? t['isAvailable'] ?? false) as bool;
+      return _buildTrainerCardContent(t, isAvailable, index);
+    }
+
+    return Consumer(
+      builder: (context, ref, _) {
+        final ratingsState = ref.watch(trainerRatingsProvider(trainerId));
+        final hasReviews = ratingsState.totalReviews > 0;
+        final double realRating = hasReviews ? ratingsState.avgRating : 0.0;
+
+        return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          stream: FirebaseFirestore.instance.collection('users').doc(trainerId).snapshots(),
+          builder: (context, userSnap) {
+            final userData = userSnap.data?.data();
+            return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+              stream: FirebaseFirestore.instance.collection('trainerProfiles').doc(trainerId).snapshots(),
+              builder: (context, profileSnap) {
+                final profileData = profileSnap.data?.data();
+
+                // Merge data
+                final Map<String, dynamic> merged = Map<String, dynamic>.from(t);
+                if (userData != null) {
+                  final name = (userData['name'] ?? userData['fullName'] ?? userData['displayName'] ?? '').toString().trim();
+                  if (name.isNotEmpty) merged['name'] = name;
+
+                  final rating = realRating > 0 ? realRating : ((userData['rating'] as num?)?.toDouble() ?? 0.0);
+                  merged['rating'] = rating > 0 ? rating : 4.7;
+
+                  final sessions = (userData['sessionsCount'] as num?)?.toInt() ?? 0;
+                  merged['sessions'] = sessions;
+
+                  merged['photoUrl'] = (userData['photoUrl'] ?? '').toString();
+                  merged['isActive'] = userData['isActive'];
+                } else {
+                  final rating = realRating > 0 ? realRating : ((t['rating'] as num?)?.toDouble() ?? 0.0);
+                  merged['rating'] = rating > 0 ? rating : 4.7;
+                }
+
+                if (profileData != null) {
+                  final specs = profileData['specializations'] as List?;
+                  if (specs != null && specs.isNotEmpty) {
+                    merged['specialty'] = specs.first.toString();
+                    merged['specializations'] = specs;
+                  }
+                  final price = (profileData['sessionPrice'] as num?)?.toInt() ?? 0;
+                  if (price > 0) {
+                    merged['price'] = price;
+                    merged['pricePerHour'] = price;
+                  }
+                  if (profileData['photoUrl'] != null && profileData['photoUrl'].toString().isNotEmpty) {
+                    merged['image'] = profileData['photoUrl'].toString();
+                  }
+                  merged['availability'] = profileData['availability'] ?? const <String, dynamic>{};
+                }
+
+                final bool finalAvailable = _isProfileAvailable(merged, merged['isActive'] ?? merged['available'] ?? false);
+                merged['isAvailable'] = finalAvailable;
+                merged['available'] = finalAvailable;
+
+                return _buildTrainerCardContent(merged, finalAvailable, index);
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildTrainerCardContent(Map<String, dynamic> t, bool isAvailable, int index) {
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0.0, end: 1.0),
       duration: Duration(milliseconds: 300 + (index * 100)),
@@ -866,150 +1485,147 @@ class _FavouriteViewState extends State<FavouriteView> {
           child: InkWell(
             borderRadius: BorderRadius.circular(20),
             onTap:
-                () => Get.toNamed(
+                () => context.push(
                   '/trainer-details',
-                  arguments: {...t, 'isAvailable': t['available'] ?? false},
+                  extra: {...t, 'isAvailable': isAvailable},
                 ),
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
                 children: [
-                  Row(
-                    children: [
-                      // Avatar with status dot
-                      Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(16),
-                            child: SizedBox(
-                              width: 72,
-                              height: 72,
-                              child: Image.network(
-                                'https://randomuser.me/api/portraits/men/${t['portrait']}.jpg',
-                                fit: BoxFit.cover,
-                                errorBuilder:
-                                    (_, __, ___) => Container(
-                                      color: raised,
-                                      child: const Icon(
-                                        CupertinoIcons.person_fill,
-                                        color: muted,
-                                        size: 30,
-                                      ),
-                                    ),
-                              ),
-                            ),
-                          ),
-                          Positioned(
-                            bottom: 4,
-                            right: 4,
-                            child: Container(
-                              width: 13,
-                              height: 13,
-                              decoration: BoxDecoration(
-                                color: isAvailable ? neon : muted,
-                                shape: BoxShape.circle,
-                                border: Border.all(color: card, width: 2),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(width: 14),
-                      // Info
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => context.push(
+                      '/trainer-details',
+                      extra: {...t, 'isAvailable': isAvailable},
+                    ),
+                    child: Row(
+                      children: [
+                        // Avatar with status dot
+                        Stack(
+                          clipBehavior: Clip.none,
                           children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    t['name'] as String,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 5,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: raised,
-                                    borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(color: stroke),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      const Icon(
-                                        CupertinoIcons.star_fill,
-                                        color: neon,
-                                        size: 13,
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        '${t['rating']}',
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(16),
+                              child: PremiumAvatar(
+                                name: (t['name'] ?? 'Trainer').toString(),
+                                customPhotoUrl: (t['image'] ?? t['photoUrl'] ?? t['imageUrl'])?.toString(),
+                                size: 72,
+                                borderRadius: 16,
+                                isTrainer: true,
+                              ),
                             ),
-                            const SizedBox(height: 4),
-                            Text(
-                              t['specialty'] as String,
-                              style: TextStyle(color: muted, fontSize: 13),
-                            ),
-                            const SizedBox(height: 6),
-                            Row(
-                              children: [
-                                Icon(
-                                  CupertinoIcons.square_grid_2x2,
-                                  color: muted,
-                                  size: 13,
+                            Positioned(
+                              bottom: 4,
+                              right: 4,
+                              child: Container(
+                                width: 13,
+                                height: 13,
+                                decoration: BoxDecoration(
+                                  color: isAvailable ? neon : muted,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: card, width: 2),
                                 ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  '${t['sessions']} sessions',
-                                  style: TextStyle(
-                                    color: muted.withOpacity(0.8),
-                                    fontSize: 11,
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Text(
-                                  '|',
-                                  style: TextStyle(color: stroke, fontSize: 13),
-                                ),
-                                const SizedBox(width: 10),
-                                Text(
-                                  '\$${t['price']}',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                Text(
-                                  '/hr',
-                                  style: TextStyle(color: muted, fontSize: 11),
-                                ),
-                              ],
+                              ),
                             ),
                           ],
                         ),
-                      ),
-                    ],
+                        const SizedBox(width: 14),
+                        // Info
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      t['name'] as String,
+                                      style: TextStyle(
+                                        color: text,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 5,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: raised,
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(color: stroke),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          CupertinoIcons.star_fill,
+                                          color: neon,
+                                          size: 13,
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          ((t['rating'] ?? 4.7) as num).toStringAsFixed(1),
+                                          style: TextStyle(
+                                            color: text,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                t['specialty'] as String,
+                                style: TextStyle(color: muted, fontSize: 13),
+                              ),
+                              const SizedBox(height: 6),
+                              Row(
+                                children: [
+                                  Icon(
+                                    CupertinoIcons.square_grid_2x2,
+                                    color: muted,
+                                    size: 13,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    '${t['sessions']} sessions',
+                                    style: TextStyle(
+                                      color: muted.withOpacity(0.8),
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Text(
+                                    '|',
+                                    style: TextStyle(color: stroke, fontSize: 13),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Text(
+                                    '\$${t['price']}',
+                                    style: TextStyle(
+                                      color: text,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  Text(
+                                    '/hr',
+                                    style: TextStyle(color: muted, fontSize: 11),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 14),
                   // Action buttons
@@ -1017,7 +1633,7 @@ class _FavouriteViewState extends State<FavouriteView> {
                     children: [
                       // Red heart remove button
                       GestureDetector(
-                        onTap: () => _favSvc.toggle(t),
+                        onTap: () => ref.read(favouritesServiceProvider.notifier).toggle(t),
                         child: Container(
                           width: 46,
                           height: 46,
@@ -1039,7 +1655,9 @@ class _FavouriteViewState extends State<FavouriteView> {
                           icon: CupertinoIcons.chat_bubble,
                           label: 'Message',
                           filled: false,
-                          onTap: () {},
+                          onTap: () {
+                            context.push('/message-screen', extra: t);
+                          },
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -1050,13 +1668,16 @@ class _FavouriteViewState extends State<FavouriteView> {
                           label: 'Book Session',
                           filled: true,
                           onTap:
-                              () => Get.toNamed(
+                              () => context.push(
                                 '/book-session',
-                                arguments: {
+                                extra: {
                                   'name': t['name'],
                                   'specialty': t['specialty'],
                                   'portrait': t['portrait'],
                                   'price': t['price'],
+                                  'trainerId': t['trainerId'],
+                                  'image': t['image'],
+                                  'rating': t['rating'],
                                 },
                               ),
                         ),
@@ -1099,7 +1720,7 @@ class _FavouriteViewState extends State<FavouriteView> {
               Text(
                 label,
                 style: TextStyle(
-                  color: filled ? ink : Colors.white70,
+                  color: filled ? ink : text,
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
                 ),
@@ -1108,6 +1729,26 @@ class _FavouriteViewState extends State<FavouriteView> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildFallbackBookingImage(Map<String, dynamic> b, double size) {
+    final name = (b['trainer'] ?? b['trainerName'] ?? 'Trainer').toString();
+    return InitialsAvatar(
+      name: name,
+      size: size,
+      fontSize: size * 0.38,
+      borderRadius: size <= 46 ? 12 : 14,
+    );
+  }
+
+  Widget _buildFallbackTrainerAvatar(Map<String, dynamic> t, double size) {
+    final name = (t['name'] ?? 'Trainer').toString();
+    return InitialsAvatar(
+      name: name,
+      size: size,
+      fontSize: size * 0.38,
+      borderRadius: 16,
     );
   }
 }

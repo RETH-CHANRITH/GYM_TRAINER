@@ -1,24 +1,64 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:go_router/go_router.dart';
 
 import '../controllers/login_controller.dart';
-import '../../../routes/app_pages.dart';
+import '../../../routes/app_router.dart' show Routes;
 import '../../../../config/glass_ui.dart';
 
-class LoginView extends GetView<LoginController> {
+class LoginView extends ConsumerStatefulWidget {
   const LoginView({super.key});
 
-  // ─── Design Tokens (matching home_view) ────────────────────────────────────────
+  @override
+  ConsumerState<LoginView> createState() => _LoginViewState();
+}
+
+class _LoginViewState extends ConsumerState<LoginView> {
+  late final TextEditingController _emailController;
+  late final TextEditingController _passwordController;
+
+  @override
+  void initState() {
+    super.initState();
+    _emailController = TextEditingController();
+    _passwordController = TextEditingController();
+
+    // Schedule checking extra arguments after build to avoid GoRouterState context issues
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      try {
+        final state = GoRouterState.of(context);
+        final extra = state.extra as Map<String, dynamic>?;
+        if (extra != null && extra['email'] != null) {
+          _emailController.text = extra['email'];
+        }
+      } catch (_) {
+        // Safe to ignore if GoRouterState is not present
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
+    final loginState = ref.watch(loginNotifierProvider);
+    final notifier = ref.read(loginNotifierProvider.notifier);
+    final kNeon = Theme.of(context).colorScheme.primary;
+
     return Scaffold(
       backgroundColor: kInk,
       extendBodyBehindAppBar: true,
-      appBar: glassAppBar(title: 'Welcome Back', onBack: () => Get.back()),
+      appBar: glassAppBar(title: 'Welcome Back', onBack: () => context.pop()),
       body: Stack(
         children: [
           Positioned.fill(child: trainerBackground()),
@@ -43,7 +83,7 @@ class LoginView extends GetView<LoginController> {
                           ),
                           child: ShaderMask(
                             shaderCallback:
-                                (b) => const LinearGradient(
+                                (b) => LinearGradient(
                                   colors: [Colors.white, kNeon],
                                 ).createShader(b),
                             child: const Icon(
@@ -61,7 +101,7 @@ class LoginView extends GetView<LoginController> {
                   // Title
                   ShaderMask(
                     shaderCallback:
-                        (b) => const LinearGradient(
+                        (b) => LinearGradient(
                           colors: [Colors.white, kNeon],
                         ).createShader(b),
                     child: Text(
@@ -96,7 +136,7 @@ class LoginView extends GetView<LoginController> {
                     child: BackdropFilter(
                       filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
                       child: TextField(
-                        controller: controller.emailController,
+                        controller: _emailController,
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 15,
@@ -125,7 +165,7 @@ class LoginView extends GetView<LoginController> {
                     child: BackdropFilter(
                       filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
                       child: TextField(
-                        controller: controller.passwordController,
+                        controller: _passwordController,
                         obscureText: true,
                         style: const TextStyle(
                           color: Colors.white,
@@ -144,7 +184,7 @@ class LoginView extends GetView<LoginController> {
                   Align(
                     alignment: Alignment.centerRight,
                     child: TextButton(
-                      onPressed: () => Get.toNamed(Routes.FORGOT_PASSWORD),
+                      onPressed: () => context.push(Routes.FORGOT_PASSWORD),
                       child: Text(
                         'Forgot password?',
                         style: GoogleFonts.dmSans(
@@ -159,27 +199,28 @@ class LoginView extends GetView<LoginController> {
                   // Login CTA
                   neonButton(
                     label: 'Login',
-                    onPressed: controller.login,
-                    child: Obx(
-                      () =>
-                          controller.isLoading.value
-                              ? const SizedBox(
-                                width: 22,
-                                height: 22,
-                                child: CircularProgressIndicator(
-                                  color: kInk,
-                                  strokeWidth: 2.5,
-                                ),
-                              )
-                              : Text(
-                                'Login',
-                                style: GoogleFonts.dmSans(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w700,
-                                  color: kInk,
-                                ),
-                              ),
+                    onPressed: () => notifier.login(
+                      context,
+                      _emailController.text,
+                      _passwordController.text,
                     ),
+                    child: loginState.isLoading
+                        ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            color: kInk,
+                            strokeWidth: 2.5,
+                          ),
+                        )
+                        : Text(
+                          'Login',
+                          style: GoogleFonts.dmSans(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: kInk,
+                          ),
+                        ),
                   ),
                   const SizedBox(height: 22),
 
@@ -225,39 +266,36 @@ class LoginView extends GetView<LoginController> {
                               borderRadius: BorderRadius.circular(28),
                             ),
                           ),
-                          onPressed: controller.signInWithGoogle,
-                          child: Obx(
-                            () =>
-                                controller.isGoogleLoading.value
-                                    ? const SizedBox(
-                                      width: 22,
-                                      height: 22,
-                                      child: CircularProgressIndicator(
-                                        color: kNeon,
-                                        strokeWidth: 2.5,
-                                      ),
-                                    )
-                                    : Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        SvgPicture.asset(
-                                          'assets/icons/google_logo.svg',
-                                          width: 22,
-                                          height: 22,
-                                        ),
-                                        const SizedBox(width: 12),
-                                        Text(
-                                          'Continue with Google',
-                                          style: GoogleFonts.dmSans(
-                                            color: Colors.white,
-                                            fontSize: 15,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      ],
+                          onPressed: () => notifier.signInWithGoogle(context),
+                          child: loginState.isGoogleLoading
+                              ? SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(
+                                  color: kNeon,
+                                  strokeWidth: 2.5,
+                                ),
+                              )
+                              : Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.center,
+                                children: [
+                                  SvgPicture.asset(
+                                    'assets/icons/google_logo.svg',
+                                    width: 22,
+                                    height: 22,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Text(
+                                    'Continue with Google',
+                                    style: GoogleFonts.dmSans(
+                                      color: Colors.white,
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
                                     ),
-                          ),
+                                  ),
+                                ],
+                              ),
                         ),
                       ),
                     ),
@@ -277,7 +315,7 @@ class LoginView extends GetView<LoginController> {
                           ),
                         ),
                         GestureDetector(
-                          onTap: () => Get.toNamed(Routes.SIGN_UP),
+                          onTap: () => context.push(Routes.SIGN_UP),
                           child: Text(
                             'Sign Up',
                             style: GoogleFonts.dmSans(

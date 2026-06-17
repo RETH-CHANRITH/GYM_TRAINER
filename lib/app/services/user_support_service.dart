@@ -1,8 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-class UserSupportService extends GetxService {
+class UserSupportService {
   final _auth = FirebaseAuth.instance;
   final _firestore = FirebaseFirestore.instance;
 
@@ -10,17 +10,18 @@ class UserSupportService extends GetxService {
     required String subject,
     required String message,
     String category = 'general',
+    required void Function(String title, String message) onNotification,
   }) async {
     final user = _auth.currentUser;
     if (user == null) {
-      Get.snackbar('Login required', 'Please login to contact support.');
+      onNotification('Login required', 'Please login to contact support.');
       return false;
     }
 
     final trimmedSubject = subject.trim();
     final trimmedMessage = message.trim();
     if (trimmedSubject.isEmpty || trimmedMessage.length < 10) {
-      Get.snackbar(
+      onNotification(
         'Invalid ticket',
         'Please add a subject and at least 10 characters in your message.',
       );
@@ -45,16 +46,19 @@ class UserSupportService extends GetxService {
     return true;
   }
 
-  Future<bool> requestAccountDeletion({required String reason}) async {
+  Future<bool> requestAccountDeletion({
+    required String reason,
+    required void Function(String title, String message) onNotification,
+  }) async {
     final user = _auth.currentUser;
     if (user == null) {
-      Get.snackbar('Login required', 'Please login to submit this request.');
+      onNotification('Login required', 'Please login to submit this request.');
       return false;
     }
 
     final trimmedReason = reason.trim();
     if (trimmedReason.length < 10) {
-      Get.snackbar(
+      onNotification(
         'Reason required',
         'Please provide at least 10 characters for the deletion reason.',
       );
@@ -77,3 +81,7 @@ class UserSupportService extends GetxService {
     return true;
   }
 }
+
+final userSupportServiceProvider = Provider<UserSupportService>((ref) {
+  return UserSupportService();
+});

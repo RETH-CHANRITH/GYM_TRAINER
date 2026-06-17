@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Professional API client with error handling, logging, and interceptors
 class ApiClient {
@@ -238,3 +239,12 @@ class ApiException implements Exception {
   @override
   String toString() => message;
 }
+
+final apiClientProvider = Provider<ApiClient>((ref) {
+  // Local development (Android Emulator):
+  return ApiClient(baseUrl: 'http://10.0.2.2:5000/api/v1');
+  // Local development (iOS Simulator):
+  // return ApiClient(baseUrl: 'http://localhost:5000/api/v1');
+  // Production:
+  // return ApiClient(baseUrl: 'https://gym-trainer-backend-9lxr.onrender.com/api/v1');
+});

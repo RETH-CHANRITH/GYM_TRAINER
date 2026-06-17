@@ -1,17 +1,16 @@
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-class NotificationPermissionController extends GetxController {
-  var notificationEnabled = Rx<bool>(false);
+class NotificationPermissionNotifier extends AutoDisposeNotifier<bool> {
+  @override
+  bool build() {
+    return false;
+  }
 
   void toggleNotification(bool value) {
-    notificationEnabled.value = value;
-  }
-
-  void nextStep() {
-    Get.toNamed('/profile-summary');
-  }
-
-  void goBack() {
-    Get.back();
+    state = value;
   }
 }
+
+final notificationPermissionProvider = AutoDisposeNotifierProvider<NotificationPermissionNotifier, bool>(() {
+  return NotificationPermissionNotifier();
+});

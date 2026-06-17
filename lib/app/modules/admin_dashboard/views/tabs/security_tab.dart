@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../../../config/glass_ui.dart';
 import '../../controllers/admin_dashboard_controller.dart';
 import '../components/admin_components.dart';
 
-class SecurityTab extends GetView<AdminDashboardController> {
+class SecurityTab extends ConsumerWidget {
   const SecurityTab({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final controller = ref.watch(adminDashboardProvider);
+
     return Column(
       children: [
         Padding(
@@ -52,6 +54,7 @@ class SecurityTab extends GetView<AdminDashboardController> {
     final timestamp = log['timestamp'] as String? ?? 'N/A';
     final status = log['status'] as String? ?? 'completed';
     final requestId = log['requestId'] as String? ?? 'N/A';
+    final accent = Theme.of(context).colorScheme.primary;
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -117,21 +120,21 @@ class SecurityTab extends GetView<AdminDashboardController> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                 decoration: BoxDecoration(
-                  color: kNeon.withOpacity(0.1),
+                  color: accent.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: kNeon.withOpacity(0.3)),
+                  border: Border.all(color: accent.withOpacity(0.3)),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.info_rounded, color: kNeon, size: 14),
+                    Icon(Icons.info_rounded, color: accent, size: 14),
                     const SizedBox(width: 4),
                     Text(
                       'View Changes',
                       style: GoogleFonts.dmSans(
                         fontSize: 10,
                         fontWeight: FontWeight.w600,
-                        color: kNeon,
+                        color: accent,
                       ),
                     ),
                   ],
@@ -191,8 +194,11 @@ class SecurityTab extends GetView<AdminDashboardController> {
   }
 
   void _showLogDetails(BuildContext context, Map<String, dynamic> log) {
-    Get.bottomSheet(
-      Container(
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
         decoration: BoxDecoration(
           color: const Color(0xFF1A0330),
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
@@ -218,8 +224,8 @@ class SecurityTab extends GetView<AdminDashboardController> {
                     ),
                   ),
                   IconButton(
-                    onPressed: Get.back,
-                    icon: const Icon(Icons.close_rounded),
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close_rounded, color: Colors.white),
                   ),
                 ],
               ),
@@ -281,7 +287,7 @@ class SecurityTab extends GetView<AdminDashboardController> {
                         log['after'].toString(),
                         style: GoogleFonts.dmSans(
                           fontSize: 10,
-                          color: kNeon.withOpacity(0.7),
+                          color: Theme.of(context).colorScheme.primary.withOpacity(0.7),
                         ),
                       ),
                     ),
@@ -291,7 +297,6 @@ class SecurityTab extends GetView<AdminDashboardController> {
           ),
         ),
       ),
-      isScrollControlled: true,
     );
   }
 
@@ -325,5 +330,16 @@ class SecurityTab extends GetView<AdminDashboardController> {
         ],
       ),
     );
+  }
+}
+
+class Obx extends ConsumerWidget {
+  final Widget Function() builder;
+  const Obx(this.builder, {super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(adminDashboardProvider);
+    return builder();
   }
 }

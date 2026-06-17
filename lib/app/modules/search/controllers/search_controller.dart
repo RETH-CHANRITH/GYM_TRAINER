@@ -1,21 +1,66 @@
 import 'dart:async';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:get/get.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../../../services/post_interaction_service.dart';
 
-class SearchController extends GetxController {
-  SearchController({FirebaseFirestore? firestore})
-    : _firestore = firestore ?? FirebaseFirestore.instance;
+class SearchState {
+  final String query;
+  final String selectedSpecialty;
+  final double minRating;
+  final double maxPrice;
+  final bool isLoading;
+  final List<Map<String, dynamic>> allTrainers;
+  final List<Map<String, dynamic>> allPosts;
+  final List<Map<String, dynamic>> filtered;
+  final List<Map<String, dynamic>> filteredPosts;
 
-  final FirebaseFirestore _firestore;
+  SearchState({
+    required this.query,
+    required this.selectedSpecialty,
+    required this.minRating,
+    required this.maxPrice,
+    required this.isLoading,
+    required this.allTrainers,
+    required this.allPosts,
+    required this.filtered,
+    required this.filteredPosts,
+  });
 
-  final query = RxString('');
-  final selectedSpecialty = RxString('All');
-  final minRating = RxDouble(0.0);
-  final maxPrice = RxDouble(200.0);
-  final isLoading = true.obs;
+  SearchState copyWith({
+    String? query,
+    String? selectedSpecialty,
+    double? minRating,
+    double? maxPrice,
+    bool? isLoading,
+    List<Map<String, dynamic>>? allTrainers,
+    List<Map<String, dynamic>>? allPosts,
+    List<Map<String, dynamic>>? filtered,
+    List<Map<String, dynamic>>? filteredPosts,
+  }) {
+    return SearchState(
+      query: query ?? this.query,
+      selectedSpecialty: selectedSpecialty ?? this.selectedSpecialty,
+      minRating: minRating ?? this.minRating,
+      maxPrice: maxPrice ?? this.maxPrice,
+      isLoading: isLoading ?? this.isLoading,
+      allTrainers: allTrainers ?? this.allTrainers,
+      allPosts: allPosts ?? this.allPosts,
+      filtered: filtered ?? this.filtered,
+      filteredPosts: filteredPosts ?? this.filteredPosts,
+    );
+  }
+}
 
-  final List<String> specialties = [
+class SearchNotifier extends AutoDisposeNotifier<SearchState> {
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final List<StreamSubscription<dynamic>> _subs = [];
+  final Map<String, Map<String, dynamic>> _trainerUsersByUid = {};
+  final Map<String, Map<String, dynamic>> _trainerProfilesByUid = {};
+
+  final List<String> specialties = const [
     'All',
     'Strength',
     'Yoga',
@@ -25,34 +70,28 @@ class SearchController extends GetxController {
     'Powerlifting',
   ];
 
-  final allTrainers = <Map<String, dynamic>>[].obs;
-  final allPosts = <Map<String, dynamic>>[].obs;
-
-  final _trainerUsersByUid = <String, Map<String, dynamic>>{};
-  final _trainerProfilesByUid = <String, Map<String, dynamic>>{};
-  final _subs = <StreamSubscription<dynamic>>[];
-
-  final filtered = <Map<String, dynamic>>[].obs;
-  final filteredPosts = <Map<String, dynamic>>[].obs;
-
   @override
-  void onInit() {
-    super.onInit();
+  SearchState build() {
+    ref.onDispose(() {
+      for (final sub in _subs) {
+        sub.cancel();
+      }
+    });
+
     _listenTrainersRealtime();
     _listenPostsRealtime();
-    _recompute();
-    ever(query, (_) => _recompute());
-    ever(selectedSpecialty, (_) => _recompute());
-    ever(minRating, (_) => _recompute());
-    ever(maxPrice, (_) => _recompute());
-  }
 
-  @override
-  void onClose() {
-    for (final sub in _subs) {
-      sub.cancel();
-    }
-    super.onClose();
+    return SearchState(
+      query: '',
+      selectedSpecialty: 'All',
+      minRating: 0.0,
+      maxPrice: 1000.0,
+      isLoading: true,
+      allTrainers: [],
+      allPosts: [],
+      filtered: [],
+      filteredPosts: [],
+    );
   }
 
   void _listenTrainersRealtime() {
@@ -64,13 +103,12 @@ class SearchController extends GetxController {
           .snapshots()
           .listen(
             (snap) {
-              _trainerUsersByUid
-                ..clear()
-                ..addEntries(snap.docs.map((d) => MapEntry(d.id, d.data())));
+              _trainerUsersByUid.clear();
+              _trainerUsersByUid.addEntries(snap.docs.map((d) => MapEntry(d.id, d.data())));
               _rebuildTrainerCatalog();
             },
             onError: (_) {
-              isLoading.value = false;
+              state = state.copyWith(isLoading: false);
             },
           ),
     );
@@ -82,13 +120,12 @@ class SearchController extends GetxController {
           .snapshots()
           .listen(
             (snap) {
-              _trainerProfilesByUid
-                ..clear()
-                ..addEntries(snap.docs.map((d) => MapEntry(d.id, d.data())));
+              _trainerProfilesByUid.clear();
+              _trainerProfilesByUid.addEntries(snap.docs.map((d) => MapEntry(d.id, d.data())));
               _rebuildTrainerCatalog();
             },
             onError: (_) {
-              isLoading.value = false;
+              state = state.copyWith(isLoading: false);
             },
           ),
     );
@@ -111,12 +148,11 @@ class SearchController extends GetxController {
                   b['createdAt'] ?? b['createdAtClient'],
                 ).compareTo(_toEpochMs(a['createdAt'] ?? a['createdAtClient'])),
               );
-              allPosts.assignAll(mapped);
+              state = state.copyWith(allPosts: mapped, isLoading: false);
               _recompute();
-              isLoading.value = false;
             },
             onError: (_) {
-              isLoading.value = false;
+              state = state.copyWith(isLoading: false);
             },
           ),
     );
@@ -164,71 +200,70 @@ class SearchController extends GetxController {
       });
     }
 
-    allTrainers.assignAll(merged);
+    state = state.copyWith(allTrainers: merged, isLoading: false);
     _recompute();
-    isLoading.value = false;
   }
 
   void _recompute() {
-    final rawQuery = query.value.trim().toLowerCase();
-    final spec = selectedSpecialty.value.toLowerCase();
+    final rawQuery = state.query.trim().toLowerCase();
+    final spec = state.selectedSpecialty.toLowerCase();
 
-    filtered.value =
-        allTrainers.where((t) {
-          final name = (t['name'] ?? '').toString().toLowerCase();
-          final specialty = (t['specialty'] ?? '').toString().toLowerCase();
-          final extraSpecs =
-              (t['specializations'] is List)
-                  ? (t['specializations'] as List)
-                      .map((e) => e.toString().toLowerCase())
-                      .join(' ')
-                  : '';
-          final searchBlob = '$name $specialty $extraSpecs';
+    final filteredTrainers = state.allTrainers.where((t) {
+      final name = (t['name'] ?? '').toString().toLowerCase();
+      final specialty = (t['specialty'] ?? '').toString().toLowerCase();
+      final extraSpecs =
+          (t['specializations'] is List)
+              ? (t['specializations'] as List)
+                  .map((e) => e.toString().toLowerCase())
+                  .join(' ')
+              : '';
+      final searchBlob = '$name $specialty $extraSpecs';
 
-          final matchQuery = rawQuery.isEmpty || searchBlob.contains(rawQuery);
-          final matchSpecialty =
-              spec == 'all' ||
-              specialty.contains(spec) ||
-              extraSpecs.contains(spec);
-          final matchRating = _toDouble(t['rating']) >= minRating.value;
-          final matchPrice =
-              _toDouble(t['pricePerHour'] ?? t['price']) <= maxPrice.value;
-          return matchQuery && matchSpecialty && matchRating && matchPrice;
-        }).toList();
+      final matchQuery = rawQuery.isEmpty || searchBlob.contains(rawQuery);
+      final matchSpecialty =
+          spec == 'all' ||
+          specialty.contains(spec) ||
+          extraSpecs.contains(spec);
+      final matchRating = _toDouble(t['rating']) >= state.minRating;
+      final matchPrice =
+          _toDouble(t['pricePerHour'] ?? t['price']) <= state.maxPrice;
+      return matchQuery && matchSpecialty && matchRating && matchPrice;
+    }).toList();
 
-    filteredPosts.value =
-        allPosts.where((post) {
-          final trainer = findTrainerForPost(post);
-          final trainerSpec =
-              (trainer?['specialty'] ?? post['category'] ?? '').toString();
-          final trainerRating = _toDouble(trainer?['rating']);
-          final trainerPrice = _toDouble(
-            trainer?['pricePerHour'] ?? trainer?['price'],
-          );
+    final filteredPostsList = state.allPosts.where((post) {
+      final trainer = findTrainerForPost(post);
+      final trainerSpec =
+          (trainer?['specialty'] ?? post['category'] ?? '').toString();
+      final trainerRating = _toDouble(trainer?['rating']);
+      final trainerPrice = _toDouble(
+        trainer?['pricePerHour'] ?? trainer?['price'],
+      );
 
-          final tags =
-              (post['tags'] is List)
-                  ? (post['tags'] as List).map((e) => e.toString()).join(' ')
-                  : '';
-          final postBlob =
-              [
-                (post['title'] ?? '').toString(),
-                (post['caption'] ?? '').toString(),
-                (post['category'] ?? '').toString(),
-                tags,
-                (post['trainerName'] ?? '').toString(),
-                trainerSpec,
-              ].join(' ').toLowerCase();
+      final tags =
+          (post['tags'] is List)
+              ? (post['tags'] as List).map((e) => e.toString()).join(' ')
+              : '';
+      final postBlob =
+          [
+            (post['title'] ?? '').toString(),
+            (post['caption'] ?? '').toString(),
+            (post['category'] ?? '').toString(),
+            tags,
+            (post['trainerName'] ?? '').toString(),
+            trainerSpec,
+          ].join(' ').toLowerCase();
 
-          final matchQuery = rawQuery.isEmpty || postBlob.contains(rawQuery);
-          final matchSpecialty =
-              spec == 'all' || trainerSpec.toLowerCase().contains(spec);
-          final matchRating =
-              trainer == null || trainerRating >= minRating.value;
-          final matchPrice = trainer == null || trainerPrice <= maxPrice.value;
+      final matchQuery = rawQuery.isEmpty || postBlob.contains(rawQuery);
+      final matchSpecialty =
+          spec == 'all' || trainerSpec.toLowerCase().contains(spec);
+      final matchRating =
+          trainer == null || trainerRating >= state.minRating;
+      final matchPrice = trainer == null || trainerPrice <= state.maxPrice;
 
-          return matchQuery && matchSpecialty && matchRating && matchPrice;
-        }).toList();
+      return matchQuery && matchSpecialty && matchRating && matchPrice;
+    }).toList();
+
+    state = state.copyWith(filtered: filteredTrainers, filteredPosts: filteredPostsList);
   }
 
   Map<String, dynamic>? findTrainerForPost(Map<String, dynamic> post) {
@@ -236,14 +271,14 @@ class SearchController extends GetxController {
     final trainerName = (post['trainerName'] ?? '').toString().trim();
 
     if (trainerId.isNotEmpty) {
-      final byId = allTrainers.firstWhereOrNull(
+      final byId = state.allTrainers.firstWhereOrNull(
         (t) => (t['trainerId'] ?? t['id']).toString() == trainerId,
       );
       if (byId != null) return byId;
     }
 
     if (trainerName.isNotEmpty) {
-      return allTrainers.firstWhereOrNull(
+      return state.allTrainers.firstWhereOrNull(
         (t) =>
             (t['name'] ?? '').toString().trim().toLowerCase() ==
             trainerName.toLowerCase(),
@@ -253,19 +288,19 @@ class SearchController extends GetxController {
     return null;
   }
 
-  void openTrainerFromPost(Map<String, dynamic> post) {
+  void openTrainerFromPost(BuildContext context, Map<String, dynamic> post) {
     final trainer = findTrainerForPost(post);
     if (trainer != null) {
-      Get.toNamed('/trainer-details', arguments: trainer);
+      context.push('/trainer-details', extra: trainer);
       return;
     }
 
     final trainerId = (post['trainerId'] ?? '').toString().trim();
     final trainerName = (post['trainerName'] ?? 'Trainer').toString().trim();
 
-    Get.toNamed(
+    context.push(
       '/trainer-details',
-      arguments: {
+      extra: {
         'id': trainerId,
         'trainerId': trainerId,
         'name': trainerName,
@@ -276,8 +311,25 @@ class SearchController extends GetxController {
     );
   }
 
-  void setQuery(String q) => query.value = q;
-  void setSpecialty(String s) => selectedSpecialty.value = s;
+  void setQuery(String q) {
+    state = state.copyWith(query: q);
+    _recompute();
+  }
+
+  void setSpecialty(String s) {
+    state = state.copyWith(selectedSpecialty: s);
+    _recompute();
+  }
+
+  void setMinRating(double rating) {
+    state = state.copyWith(minRating: rating);
+    _recompute();
+  }
+
+  void setMaxPrice(double price) {
+    state = state.copyWith(maxPrice: price);
+    _recompute();
+  }
 
   bool _isProfileAvailable(Map<String, dynamic> profile, dynamic fallback) {
     final raw = profile['availability'];
@@ -313,5 +365,57 @@ class SearchController extends GetxController {
       if (parsed != null) return parsed.millisecondsSinceEpoch;
     }
     return 0;
+  }
+
+  Future<void> togglePostLike(String postId) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    final uid = user.uid;
+
+    final updatedPosts = state.allPosts.map((post) {
+      if ((post['id'] ?? post['postId'] ?? '').toString() == postId) {
+        final likedBy = List<String>.from(post['likedBy'] ?? <dynamic>[]);
+        final currentCount = post['likesCount'] ?? 0;
+        final isLiked = likedBy.contains(uid);
+
+        final newLikedBy = List<String>.from(likedBy);
+        int newCount = currentCount;
+
+        if (isLiked) {
+          newLikedBy.remove(uid);
+          newCount = (newCount - 1).clamp(0, 999999);
+        } else {
+          newLikedBy.add(uid);
+          newCount = newCount + 1;
+        }
+
+        return {
+          ...post,
+          'likedBy': newLikedBy,
+          'likesCount': newCount,
+        };
+      }
+      return post;
+    }).toList();
+
+    state = state.copyWith(allPosts: updatedPosts);
+    _recompute();
+
+    try {
+      await ref.read(postInteractionServiceProvider).toggleLike(postId);
+    } catch (_) {}
+  }
+}
+
+final searchNotifierProvider = AutoDisposeNotifierProvider<SearchNotifier, SearchState>(() {
+  return SearchNotifier();
+});
+
+extension FirstWhereOrNullExtension<T> on Iterable<T> {
+  T? firstWhereOrNull(bool Function(T element) test) {
+    for (var element in this) {
+      if (test(element)) return element;
+    }
+    return null;
   }
 }

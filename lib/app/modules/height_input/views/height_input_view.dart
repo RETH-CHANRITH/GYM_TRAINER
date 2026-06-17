@@ -1,13 +1,57 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
-
-import '../controllers/height_input_controller.dart';
 import '../../../../config/glass_ui.dart';
+import '../../../providers/global_providers.dart';
+import '../../../routes/app_router.dart' show Routes;
 
-class HeightInputView extends GetView<HeightInputController> {
+class HeightInputView extends ConsumerStatefulWidget {
   const HeightInputView({Key? key}) : super(key: key);
+
+  @override
+  ConsumerState<HeightInputView> createState() => _HeightInputViewState();
+}
+
+class _HeightInputViewState extends ConsumerState<HeightInputView> {
+  // Dynamic accent colour — follows the user's chosen theme.
+  Color get _accent => Theme.of(context).colorScheme.primary;
+
+  late final TextEditingController _heightController;
+  int _height = 170;
+
+  @override
+  void initState() {
+    super.initState();
+    final profile = ref.read(userProfileServiceProvider);
+    _height = profile.height;
+    _heightController = TextEditingController(text: _height.toString());
+  }
+
+  @override
+  void dispose() {
+    _heightController.dispose();
+    super.dispose();
+  }
+
+  void _setHeight(int value) {
+    setState(() {
+      _height = value;
+      _heightController.text = value.toString();
+    });
+  }
+
+  void _nextStep() {
+    if (_height > 0) {
+      ref.read(userProfileServiceProvider.notifier).setHeight(_height);
+      context.go(Routes.FITNESS_GOAL);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a valid height')),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -16,7 +60,7 @@ class HeightInputView extends GetView<HeightInputController> {
       extendBodyBehindAppBar: true,
       appBar: glassAppBar(
         title: 'Your Height',
-        onBack: () => controller.goBack(),
+        onBack: () => context.go(Routes.WEIGHT_INPUT),
       ),
       body: Stack(
         children: [
@@ -29,8 +73,8 @@ class HeightInputView extends GetView<HeightInputController> {
                 children: [
                   ShaderMask(
                     shaderCallback:
-                        (b) => const LinearGradient(
-                          colors: [Colors.white, kNeon],
+                        (b) => LinearGradient(
+                          colors: [Colors.white, _accent],
                         ).createShader(b),
                     child: Text(
                       'How tall\nare you?',
@@ -53,17 +97,15 @@ class HeightInputView extends GetView<HeightInputController> {
                       children: [
                         ShaderMask(
                           shaderCallback:
-                              (b) => const LinearGradient(
-                                colors: [Colors.white, kNeon],
+                              (b) => LinearGradient(
+                                colors: [Colors.white, _accent],
                               ).createShader(b),
-                          child: Obx(
-                            () => Text(
-                              '${controller.height.value ?? 170}',
-                              style: const TextStyle(
-                                fontSize: 80,
-                                fontWeight: FontWeight.w800,
-                                color: Colors.white,
-                              ),
+                          child: Text(
+                            '$_height',
+                            style: const TextStyle(
+                              fontSize: 80,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
                             ),
                           ),
                         ),
@@ -77,31 +119,28 @@ class HeightInputView extends GetView<HeightInputController> {
                         const SizedBox(height: 28),
                         SliderTheme(
                           data: SliderTheme.of(context).copyWith(
-                            activeTrackColor: kNeon,
+                            activeTrackColor: _accent,
                             inactiveTrackColor: Colors.white.withOpacity(0.10),
-                            thumbColor: kNeon,
-                            overlayColor: kNeon.withOpacity(0.15),
+                            thumbColor: _accent,
+                            overlayColor: _accent.withOpacity(0.15),
                             trackHeight: 6,
                             thumbShape: const RoundSliderThumbShape(
                               enabledThumbRadius: 12,
                             ),
                           ),
-                          child: Obx(
-                            () => Slider(
-                              value:
-                                  (controller.height.value ?? 170).toDouble(),
-                              min: 100,
-                              max: 250,
-                              divisions: 150,
-                              onChanged: (v) => controller.setHeight(v.toInt()),
-                            ),
+                          child: Slider(
+                            value: _height.toDouble().clamp(100, 250),
+                            min: 100,
+                            max: 250,
+                            divisions: 150,
+                            onChanged: (v) => _setHeight(v.toInt()),
                           ),
                         ),
                         const SizedBox(height: 24),
                         LiquidTile(
                           padding: EdgeInsets.zero,
                           child: TextField(
-                            controller: controller.heightController,
+                            controller: _heightController,
                             keyboardType: TextInputType.number,
                             style: const TextStyle(
                               color: Colors.white,
@@ -109,7 +148,11 @@ class HeightInputView extends GetView<HeightInputController> {
                             ),
                             onChanged: (v) {
                               final n = int.tryParse(v);
-                              if (n != null) controller.setHeight(n);
+                              if (n != null) {
+                                setState(() {
+                                  _height = n;
+                                });
+                              }
                             },
                             decoration: const InputDecoration(
                               hintText: 'Or type here',
@@ -129,7 +172,7 @@ class HeightInputView extends GetView<HeightInputController> {
                   ),
                   neonButton(
                     label: 'Continue',
-                    onPressed: () => controller.nextStep(),
+                    onPressed: _nextStep,
                   ),
                   const SizedBox(height: 8),
                 ],

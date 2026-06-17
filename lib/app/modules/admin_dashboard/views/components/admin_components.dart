@@ -190,7 +190,8 @@ class AdminActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = isDestructive ? Colors.red : kNeon;
+    final accent = Theme.of(context).colorScheme.primary;
+    final color = isDestructive ? Colors.red : accent;
 
     return SizedBox(
       width: width,
@@ -213,7 +214,7 @@ class AdminActionButton extends StatelessWidget {
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
                         valueColor: AlwaysStoppedAnimation(
-                          isDestructive ? Colors.red : kNeon,
+                          isDestructive ? Colors.red : accent,
                         ),
                       ),
                     )
@@ -258,6 +259,7 @@ class ActivityItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final accent = Theme.of(context).colorScheme.primary;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12),
       child: Row(
@@ -267,10 +269,10 @@ class ActivityItem extends StatelessWidget {
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: kNeon.withOpacity(0.15),
+              color: accent.withOpacity(0.15),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(icon, color: kNeon, size: 20),
+            child: Icon(icon, color: accent, size: 20),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -477,7 +479,7 @@ class AdminSearchBar extends StatelessWidget {
               ),
             ),
           ),
-          Icon(Icons.search_rounded, color: kNeon, size: 20),
+          Icon(Icons.search_rounded, color: Theme.of(context).colorScheme.primary, size: 20),
         ],
       ),
     );

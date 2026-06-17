@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../config/glass_ui.dart';
 import '../controllers/admin_dashboard_controller.dart';
@@ -10,7 +10,7 @@ import 'tabs/trainer_applications_tab.dart';
 import 'tabs/bookings_and_finance_tabs.dart';
 import 'tabs/security_tab.dart';
 
-class AdminDashboardView extends GetView<AdminDashboardController> {
+class AdminDashboardView extends ConsumerWidget {
   const AdminDashboardView({super.key});
 
   // Tab metadata
@@ -39,7 +39,9 @@ class AdminDashboardView extends GetView<AdminDashboardController> {
   ];
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final controller = ref.watch(adminDashboardProvider);
+
     return Scaffold(
       appBar: AppBar(
         elevation: 0,
@@ -56,7 +58,7 @@ class AdminDashboardView extends GetView<AdminDashboardController> {
         ),
         actions: [
           IconButton(
-            onPressed: _showLogoutDialog,
+            onPressed: () => _showLogoutDialog(context, controller),
             icon: const Icon(Icons.logout_rounded, color: Colors.white),
             tooltip: 'Logout',
           ),
@@ -99,44 +101,64 @@ class AdminDashboardView extends GetView<AdminDashboardController> {
     );
   }
 
-  void _showLogoutDialog() {
-    Get.defaultDialog(
-      title: 'Logout',
-      titleStyle: GoogleFonts.dmSans(
-        fontSize: 18,
-        fontWeight: FontWeight.w700,
-        color: Colors.white,
-      ),
-      middleText: 'Are you sure you want to logout?',
-      middleTextStyle: GoogleFonts.dmSans(
-        fontSize: 14,
-        color: const Color(0xFFB8B8C8),
-      ),
-      backgroundColor: const Color(0xFF1A1620),
+  void _showLogoutDialog(BuildContext context, AdminDashboardController controller) {
+    showDialog(
+      context: context,
       barrierDismissible: false,
-      confirm: TextButton(
-        onPressed: () {
-          Get.back();
-          controller.logout();
-        },
-        child: Text(
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1620),
+        title: Text(
           'Logout',
           style: GoogleFonts.dmSans(
-            fontWeight: FontWeight.w600,
-            color: const Color(0xFFFF4F4F),
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            color: Colors.white,
           ),
         ),
-      ),
-      cancel: TextButton(
-        onPressed: () => Get.back(),
-        child: Text(
-          'Cancel',
+        content: Text(
+          'Are you sure you want to logout?',
           style: GoogleFonts.dmSans(
-            fontWeight: FontWeight.w600,
-            color: const Color(0xFF38C9FF),
+            fontSize: 14,
+            color: const Color(0xFFB8B8C8),
           ),
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              'Cancel',
+              style: GoogleFonts.dmSans(
+                fontWeight: FontWeight.w600,
+                color: const Color(0xFF38C9FF),
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              controller.logout();
+            },
+            child: Text(
+              'Logout',
+              style: GoogleFonts.dmSans(
+                fontWeight: FontWeight.w600,
+                color: const Color(0xFFFF4F4F),
+              ),
+            ),
+          ),
+        ],
       ),
     );
+  }
+}
+
+class Obx extends ConsumerWidget {
+  final Widget Function() builder;
+  const Obx(this.builder, {super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(adminDashboardProvider);
+    return builder();
   }
 }

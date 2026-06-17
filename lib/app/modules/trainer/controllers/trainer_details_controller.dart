@@ -1,202 +1,399 @@
 import 'dart:async';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../../../services/post_interaction_service.dart';
 
-class TrainerDetailsController extends GetxController {
+class TrainerDetailsState {
+  final String trainerName;
+  final String specialty;
+  final double rating;
+  final int reviewCount;
+  final int pricePerHour;
+  final int sessions;
+  final int portrait;
+  final String imageUrl;
+  final bool isAvailable;
+  final String trainerId;
+  final String bio;
+  final List<String> specializations;
+  final List<String> languages;
+  final List<String> sessionLocations;
+  final Map<String, Map<String, dynamic>> availability;
+  final List<Map<String, dynamic>> recentPosts;
+  final int age;
+  final double height;
+  final int experienceYears;
+
+  TrainerDetailsState({
+    required this.trainerName,
+    required this.specialty,
+    required this.rating,
+    required this.reviewCount,
+    required this.pricePerHour,
+    required this.sessions,
+    required this.portrait,
+    required this.imageUrl,
+    required this.isAvailable,
+    required this.trainerId,
+    required this.bio,
+    required this.specializations,
+    required this.languages,
+    required this.sessionLocations,
+    required this.availability,
+    required this.recentPosts,
+    required this.age,
+    required this.height,
+    required this.experienceYears,
+  });
+
+  TrainerDetailsState copyWith({
+    String? trainerName,
+    String? specialty,
+    double? rating,
+    int? reviewCount,
+    int? pricePerHour,
+    int? sessions,
+    int? portrait,
+    String? imageUrl,
+    bool? isAvailable,
+    String? trainerId,
+    String? bio,
+    List<String>? specializations,
+    List<String>? languages,
+    List<String>? sessionLocations,
+    Map<String, Map<String, dynamic>>? availability,
+    List<Map<String, dynamic>>? recentPosts,
+    int? age,
+    double? height,
+    int? experienceYears,
+  }) {
+    return TrainerDetailsState(
+      trainerName: trainerName ?? this.trainerName,
+      specialty: specialty ?? this.specialty,
+      rating: rating ?? this.rating,
+      reviewCount: reviewCount ?? this.reviewCount,
+      pricePerHour: pricePerHour ?? this.pricePerHour,
+      sessions: sessions ?? this.sessions,
+      portrait: portrait ?? this.portrait,
+      imageUrl: imageUrl ?? this.imageUrl,
+      isAvailable: isAvailable ?? this.isAvailable,
+      trainerId: trainerId ?? this.trainerId,
+      bio: bio ?? this.bio,
+      specializations: specializations ?? this.specializations,
+      languages: languages ?? this.languages,
+      sessionLocations: sessionLocations ?? this.sessionLocations,
+      availability: availability ?? this.availability,
+      recentPosts: recentPosts ?? this.recentPosts,
+      age: age ?? this.age,
+      height: height ?? this.height,
+      experienceYears: experienceYears ?? this.experienceYears,
+    );
+  }
+}
+
+class TrainerDetailsNotifier extends StateNotifier<TrainerDetailsState> {
+  final Ref ref;
+  final Map<String, dynamic>? initialArgs;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final List<StreamSubscription<dynamic>> _subs = [];
 
-  var trainerName = 'Trainer'.obs;
-  var specialty = ''.obs;
-  var rating = 0.0.obs;
-  var reviewCount = 0.obs;
-  var pricePerHour = 0.obs;
-  var sessions = 0.obs;
-  var portrait = 10.obs;
-  var imageUrl = ''.obs;
-  var isAvailable = false.obs;
-  var trainerId = ''.obs;
-  var bio = ''.obs;
-  var specializations = <String>[].obs;
-  var languages = <String>[].obs;
-  var sessionLocations = <String>[].obs;
-  var availability = <String, Map<String, dynamic>>{}.obs;
-  var recentPosts = <Map<String, dynamic>>[].obs;
+  TrainerDetailsNotifier(this.ref, this.initialArgs)
+      : super(TrainerDetailsState(
+          trainerName: 'Trainer',
+          specialty: '',
+          rating: 0.0,
+          reviewCount: 0,
+          pricePerHour: 0,
+          sessions: 0,
+          portrait: 10,
+          imageUrl: '',
+          isAvailable: false,
+          trainerId: '',
+          bio: '',
+          specializations: [],
+          languages: [],
+          sessionLocations: [],
+          availability: {},
+          recentPosts: [],
+          age: 29,
+          height: 1.82,
+          experienceYears: 5,
+        )) {
+    _init();
+  }
 
-  final _subs = <StreamSubscription<dynamic>>[];
+  void _init() {
+    if (initialArgs != null) {
+      final name = initialArgs!['name'] as String? ?? 'Trainer';
+      final spec = initialArgs!['specialty'] as String? ?? '';
+      final ratingVal = (initialArgs!['rating'] as num?)?.toDouble() ?? 0.0;
+      final reviewsVal = (initialArgs!['sessions'] as int?) ?? (initialArgs!['reviews'] as int?) ?? 0;
+      final priceVal = (initialArgs!['pricePerHour'] as int?) ?? (initialArgs!['price'] as int?) ?? 0;
+      final sessVal = (initialArgs!['sessions'] as int?) ?? 0;
+      final portVal = (initialArgs!['portrait'] as int?) ?? 32;
+      final imgVal = initialArgs!['image'] as String? ?? '';
+      final availVal = initialArgs!['isAvailable'] as bool? ?? false;
+      final uidVal = (initialArgs!['trainerId'] ?? initialArgs!['id'] ?? '').toString();
+      final bioVal = (initialArgs!['bio'] ?? '').toString();
+      final ageVal = (initialArgs!['age'] as num?)?.toInt() ?? 29;
+      final heightVal = (initialArgs!['height'] as num?)?.toDouble() ?? 1.82;
+      final expVal = (initialArgs!['experienceYears'] as num?)?.toInt() ?? 5;
 
-  @override
-  void onInit() {
-    super.onInit();
-    final args = Get.arguments;
-    if (args is Map<String, dynamic>) {
-      trainerName.value = args['name'] as String? ?? 'Trainer';
-      specialty.value = args['specialty'] as String? ?? '';
-      rating.value = (args['rating'] as num?)?.toDouble() ?? 0.0;
-      // search screen uses 'sessions', home screen uses 'reviews'
-      reviewCount.value =
-          (args['sessions'] as int?) ?? (args['reviews'] as int?) ?? 0;
-      pricePerHour.value =
-          (args['pricePerHour'] as int?) ?? (args['price'] as int?) ?? 0;
-      sessions.value = (args['sessions'] as int?) ?? 0;
-      portrait.value = (args['portrait'] as int?) ?? 32;
-      imageUrl.value = args['image'] as String? ?? '';
-      isAvailable.value = args['isAvailable'] as bool? ?? false;
-      trainerId.value = (args['trainerId'] ?? args['id'] ?? '').toString();
-      bio.value = (args['bio'] ?? '').toString();
-
-      final rawSpecs = args['specializations'];
+      List<String> specsList = [];
+      final rawSpecs = initialArgs!['specializations'];
       if (rawSpecs is List) {
-        specializations.assignAll(rawSpecs.map((e) => e.toString()));
+        specsList = rawSpecs.map((e) => e.toString()).toList();
       }
-      final rawLanguages = args['languages'];
+      List<String> langList = [];
+      final rawLanguages = initialArgs!['languages'];
       if (rawLanguages is List) {
-        languages.assignAll(rawLanguages.map((e) => e.toString()));
+        langList = rawLanguages.map((e) => e.toString()).toList();
       }
-      final rawLocations = args['sessionLocations'];
+      List<String> locsList = [];
+      final rawLocations = initialArgs!['sessionLocations'];
       if (rawLocations is List) {
-        sessionLocations.assignAll(rawLocations.map((e) => e.toString()));
+        locsList = rawLocations.map((e) => e.toString()).toList();
       }
 
-      final rawAvailability = args['availability'];
+      Map<String, Map<String, dynamic>> availMap = {};
+      final rawAvailability = initialArgs!['availability'];
       if (rawAvailability is Map) {
-        availability.assignAll(
-          rawAvailability.map((k, v) {
-            final value =
-                v is Map ? Map<String, dynamic>.from(v) : <String, dynamic>{};
-            return MapEntry(k.toString(), value);
-          }),
-        );
+        availMap = rawAvailability.map((k, v) {
+          final value = v is Map ? Map<String, dynamic>.from(v) : <String, dynamic>{};
+          return MapEntry(k.toString(), value);
+        });
       }
+
+      state = TrainerDetailsState(
+        trainerName: name,
+        specialty: spec,
+        rating: ratingVal,
+        reviewCount: reviewsVal,
+        pricePerHour: priceVal,
+        sessions: sessVal,
+        portrait: portVal,
+        imageUrl: imgVal,
+        isAvailable: availVal,
+        trainerId: uidVal,
+        bio: bioVal,
+        specializations: specsList,
+        languages: langList,
+        sessionLocations: locsList,
+        availability: availMap,
+        recentPosts: [],
+        age: ageVal,
+        height: heightVal,
+        experienceYears: expVal,
+      );
     }
 
     _listenRealtimeDetails();
   }
 
   @override
-  void onClose() {
+  void dispose() {
     for (final sub in _subs) {
       sub.cancel();
     }
-    super.onClose();
+    super.dispose();
   }
 
   void _listenRealtimeDetails() {
-    final uid = trainerId.value.trim();
-    if (uid.isNotEmpty) {
-      _subs.add(
-        _firestore.collection('trainerProfiles').doc(uid).snapshots().listen((
-          doc,
-        ) {
-          if (!doc.exists) return;
-          final data = doc.data() ?? const <String, dynamic>{};
-          _applyProfileData(data);
-        }, onError: (_) {}),
-      );
+    final uid = state.trainerId.trim();
+    final name = state.trainerName.trim();
 
-      _subs.add(
-        _firestore.collection('users').doc(uid).snapshots().listen((doc) {
-          if (!doc.exists) return;
-          final data = doc.data() ?? const <String, dynamic>{};
-          final name =
-              (data['name'] ?? data['fullName'] ?? data['displayName'] ?? '')
-                  .toString()
-                  .trim();
-          if (name.isNotEmpty) trainerName.value = name;
-          final photo = (data['photoUrl'] ?? '').toString().trim();
-          if (photo.isNotEmpty) imageUrl.value = photo;
-          final ratingValue = data['rating'];
-          if (ratingValue is num) rating.value = ratingValue.toDouble();
-          final reviewsValue = data['reviewsCount'];
-          if (reviewsValue is num) reviewCount.value = reviewsValue.toInt();
-        }, onError: (_) {}),
-      );
+    // Check if UID is empty, contains underscore (a slug like 'anh_rith_kach'), or is too short to be a valid Firebase UID
+    final bool isSlug = uid.isEmpty || uid.contains('_') || uid.length < 20;
 
-      _subs.add(
-        _firestore
-            .collection('trainerPosts')
-            .where('trainerId', isEqualTo: uid)
-            .where('isActive', isEqualTo: true)
-            .limit(30)
-            .snapshots()
-            .listen((snap) {
-              final mapped = snap.docs
-                .map((d) => {'id': d.id, ...d.data()})
-                .toList(growable: false)..sort(
-                (a, b) => _toEpochMs(
-                  b['createdAt'] ?? b['createdAtClient'],
-                ).compareTo(_toEpochMs(a['createdAt'] ?? a['createdAtClient'])),
-              );
-              recentPosts.assignAll(mapped.take(6));
-            }, onError: (_) {}),
-      );
+    if (isSlug) {
+      final searchName = (name.isNotEmpty && name.toLowerCase() != 'trainer')
+          ? name
+          : uid.replaceAll('_', ' ');
+
+      if (searchName.isNotEmpty && searchName.toLowerCase() != 'trainer') {
+        final normSearch = searchName.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toLowerCase();
+        _firestore.collection('users')
+            .where('role', isEqualTo: 'trainer')
+            .get()
+            .then((snap) {
+          DocumentSnapshot? match;
+          for (final doc in snap.docs) {
+            final data = doc.data() as Map<String, dynamic>?;
+            if (data == null) continue;
+            final dbName = (data['name'] ?? data['fullName'] ?? data['displayName'] ?? '').toString().trim();
+            final normDb = dbName.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toLowerCase();
+            if (normDb == normSearch) {
+              match = doc;
+              break;
+            }
+          }
+          if (match != null) {
+            state = state.copyWith(trainerId: match.id);
+            for (final sub in _subs) {
+              sub.cancel();
+            }
+            _subs.clear();
+            _listenRealtimeDetails(); // Restart listening with the correct trainerId
+          } else {
+            _setupNameFallback(searchName);
+          }
+        }).catchError((e) {
+          // ignore: avoid_print
+          print('[TrainerDetails] Error resolving slug UID for $searchName: $e');
+          _setupNameFallback(searchName);
+        });
+      }
       return;
     }
 
-    final name = trainerName.value.trim();
-    if (name.isEmpty) return;
+    // ── Listen to trainer profile doc ──────────────────────────────────
+    _subs.add(
+      _firestore.collection('trainerProfiles').doc(uid).snapshots().listen(
+        (doc) {
+          if (!doc.exists) return;
+          _applyProfileData(doc.data() ?? const <String, dynamic>{});
+        },
+        onError: (_) {},
+      ),
+    );
+
+    // ── Listen to user doc (name / photo / rating) ─────────────────────
+    _subs.add(
+      _firestore.collection('users').doc(uid).snapshots().listen(
+        (doc) {
+          if (!doc.exists) return;
+          final data = doc.data() ?? const <String, dynamic>{};
+          final nameVal =
+              (data['name'] ?? data['fullName'] ?? data['displayName'] ?? '')
+                  .toString()
+                  .trim();
+          final photo = (data['photoUrl'] ?? '').toString().trim();
+          final ratingValue = data['rating'];
+          final reviewsValue = data['reviewsCount'];
+          final ageValue = data['age'] is num ? (data['age'] as num).toInt() : null;
+          final heightValue = data['height'] is num ? (data['height'] as num).toDouble() : null;
+
+          state = state.copyWith(
+            trainerName: nameVal.isNotEmpty ? nameVal : state.trainerName,
+            imageUrl: photo.isNotEmpty ? photo : state.imageUrl,
+            rating: ratingValue is num ? ratingValue.toDouble() : state.rating,
+            reviewCount:
+                reviewsValue is num ? reviewsValue.toInt() : state.reviewCount,
+            age: ageValue ?? state.age,
+            height: heightValue ?? state.height,
+          );
+        },
+        onError: (_) {},
+      ),
+    );
+
+    // ── Listen to THIS trainer's posts ONLY (by trainerId) ─────────────
+    _subs.add(
+      _firestore
+          .collection('trainerPosts')
+          .where('trainerId', isEqualTo: uid)
+          .where('isActive', isEqualTo: true)
+          .snapshots()
+          .listen(
+            (snap) {
+              final mapped = snap.docs
+                  .map((d) => {'id': d.id, ...d.data()})
+                  .toList(growable: false)
+                ..sort((a, b) => _toEpochMs(
+                    b['createdAt'] ?? b['createdAtClient'],
+                  ).compareTo(_toEpochMs(a['createdAt'] ?? a['createdAtClient'])));
+              state = state.copyWith(recentPosts: mapped.take(6).toList());
+            },
+            onError: (e) {
+              // ignore: avoid_print
+              print('[TrainerDetails] trainerPosts query error for uid=$uid: $e');
+            },
+          ),
+    );
+  }
+
+  void _setupNameFallback(String name) {
     _subs.add(
       _firestore
           .collection('trainerPosts')
           .where('trainerName', isEqualTo: name)
           .where('isActive', isEqualTo: true)
-          .limit(30)
           .snapshots()
-          .listen((snap) {
-            final mapped = snap.docs
-              .map((d) => {'id': d.id, ...d.data()})
-              .toList(growable: false)..sort(
-              (a, b) => _toEpochMs(
-                b['createdAt'] ?? b['createdAtClient'],
-              ).compareTo(_toEpochMs(a['createdAt'] ?? a['createdAtClient'])),
-            );
-            recentPosts.assignAll(mapped.take(6));
-          }, onError: (_) {}),
+          .listen(
+            (snap) {
+              final mapped = snap.docs
+                  .map((d) => {'id': d.id, ...d.data()})
+                  .toList(growable: false)
+                ..sort((a, b) => _toEpochMs(
+                    b['createdAt'] ?? b['createdAtClient'],
+                  ).compareTo(_toEpochMs(a['createdAt'] ?? a['createdAtClient'])));
+              state = state.copyWith(recentPosts: mapped.take(6).toList());
+            },
+            onError: (e) {
+              // ignore: avoid_print
+              print('[TrainerDetails] trainerPosts name-fallback error: $e');
+            },
+          ),
     );
   }
 
   void _applyProfileData(Map<String, dynamic> data) {
     final rawBio = (data['bio'] ?? '').toString().trim();
-    if (rawBio.isNotEmpty) bio.value = rawBio;
-
     final rawPrice = data['sessionPrice'];
-    if (rawPrice is num && rawPrice > 0) {
-      pricePerHour.value = rawPrice.toInt();
-    }
-
     final photo = (data['photoUrl'] ?? '').toString().trim();
-    if (photo.isNotEmpty) imageUrl.value = photo;
-
     final rawSpecs = data['specializations'];
+    final rawLanguages = data['languages'];
+    final rawLocations = data['sessionLocations'];
+    final rawAvailability = data['availability'];
+    final rawExperience = data['experienceYears'];
+
+    List<String> specsList = state.specializations;
+    String specialtyVal = state.specialty;
     if (rawSpecs is List) {
-      specializations.assignAll(rawSpecs.map((e) => e.toString()));
-      if (specializations.isNotEmpty) {
-        specialty.value = specializations.first;
+      specsList = rawSpecs.map((e) => e.toString()).toList();
+      if (specsList.isNotEmpty) {
+        specialtyVal = specsList.first;
       }
     }
 
-    final rawLanguages = data['languages'];
+    List<String> langList = state.languages;
     if (rawLanguages is List) {
-      languages.assignAll(rawLanguages.map((e) => e.toString()));
+      langList = rawLanguages.map((e) => e.toString()).toList();
     }
 
-    final rawLocations = data['sessionLocations'];
+    List<String> locsList = state.sessionLocations;
     if (rawLocations is List) {
-      sessionLocations.assignAll(rawLocations.map((e) => e.toString()));
+      locsList = rawLocations.map((e) => e.toString()).toList();
     }
 
-    final rawAvailability = data['availability'];
+    Map<String, Map<String, dynamic>> availMap = state.availability;
+    bool availBool = state.isAvailable;
     if (rawAvailability is Map) {
-      final mapped = rawAvailability.map((key, value) {
+      availMap = rawAvailability.map((key, value) {
         final dayValue =
             value is Map
                 ? Map<String, dynamic>.from(value)
                 : <String, dynamic>{};
         return MapEntry(key.toString(), dayValue);
       });
-      availability.assignAll(mapped);
-      isAvailable.value = mapped.values.any((day) => day['enabled'] == true);
+      availBool = availMap.values.any((day) => day['enabled'] == true);
     }
+
+    final expYears = rawExperience is num ? rawExperience.toInt() : null;
+
+    state = state.copyWith(
+      bio: rawBio.isNotEmpty ? rawBio : state.bio,
+      pricePerHour: (rawPrice is num && rawPrice > 0) ? rawPrice.toInt() : state.pricePerHour,
+      imageUrl: photo.isNotEmpty ? photo : state.imageUrl,
+      specializations: specsList,
+      specialty: specialtyVal,
+      languages: langList,
+      sessionLocations: locsList,
+      availability: availMap,
+      isAvailable: availBool,
+      experienceYears: expYears ?? state.experienceYears,
+    );
   }
 
   int _toEpochMs(dynamic raw) {
@@ -209,4 +406,46 @@ class TrainerDetailsController extends GetxController {
     }
     return 0;
   }
+
+  Future<void> togglePostLike(String postId) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    final uid = user.uid;
+
+    final updatedPosts = state.recentPosts.map((post) {
+      if ((post['id'] ?? post['postId'] ?? '').toString() == postId) {
+        final likedBy = List<String>.from(post['likedBy'] ?? <dynamic>[]);
+        final currentCount = post['likesCount'] ?? 0;
+        final isLiked = likedBy.contains(uid);
+
+        final newLikedBy = List<String>.from(likedBy);
+        int newCount = currentCount;
+
+        if (isLiked) {
+          newLikedBy.remove(uid);
+          newCount = (newCount - 1).clamp(0, 999999);
+        } else {
+          newLikedBy.add(uid);
+          newCount = newCount + 1;
+        }
+
+        return {
+          ...post,
+          'likedBy': newLikedBy,
+          'likesCount': newCount,
+        };
+      }
+      return post;
+    }).toList();
+
+    state = state.copyWith(recentPosts: updatedPosts);
+
+    try {
+      await ref.read(postInteractionServiceProvider).toggleLike(postId);
+    } catch (_) {}
+  }
 }
+
+final trainerDetailsProvider = StateNotifierProvider.family<TrainerDetailsNotifier, TrainerDetailsState, Map<String, dynamic>?>((ref, args) {
+  return TrainerDetailsNotifier(ref, args);
+});

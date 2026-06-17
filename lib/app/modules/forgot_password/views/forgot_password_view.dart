@@ -1,33 +1,66 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:go_router/go_router.dart';
 import '../../../../config/glass_ui.dart';
 import '../controllers/forgot_password_controller.dart';
 
-class ForgotPasswordView extends GetView<ForgotPasswordController> {
+class ForgotPasswordView extends ConsumerStatefulWidget {
   const ForgotPasswordView({super.key});
 
   @override
+  ConsumerState<ForgotPasswordView> createState() => _ForgotPasswordViewState();
+}
+
+class _ForgotPasswordViewState extends ConsumerState<ForgotPasswordView> {
+  // Dynamic accent colour — follows the user's chosen theme.
+  Color get _accent => Theme.of(context).colorScheme.primary;
+
+  late final TextEditingController _emailController;
+  late final TextEditingController _phoneController;
+  late final TextEditingController _otpController;
+  late final TextEditingController _newPasswordController;
+  late final TextEditingController _confirmPasswordController;
+
+  @override
+  void initState() {
+    super.initState();
+    _emailController = TextEditingController();
+    _phoneController = TextEditingController();
+    _otpController = TextEditingController();
+    _newPasswordController = TextEditingController();
+    _confirmPasswordController = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _phoneController.dispose();
+    _otpController.dispose();
+    _newPasswordController.dispose();
+    _confirmPasswordController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final state = ref.watch(forgotPasswordNotifierProvider);
+    final notifier = ref.read(forgotPasswordNotifierProvider.notifier);
     return Scaffold(
       backgroundColor: kInk,
       extendBodyBehindAppBar: true,
       appBar: AppBar(
         elevation: 0,
         backgroundColor: Colors.transparent,
-        leading: Obx(
-          () =>
-              controller.currentStep.value == 0
-                  ? IconButton(
-                    icon: Icon(Icons.arrow_back, color: kSky),
-                    onPressed: () => Get.back(),
-                  )
-                  : IconButton(
-                    icon: Icon(Icons.arrow_back, color: kSky),
-                    onPressed: controller.goBack,
-                  ),
-        ),
+        leading: state.currentStep == 0
+            ? IconButton(
+                icon: Icon(Icons.arrow_back, color: kSky),
+                onPressed: () => context.pop(),
+              )
+            : IconButton(
+                icon: Icon(Icons.arrow_back, color: kSky),
+                onPressed: () => notifier.goBack(context),
+              ),
         title: Text(
           'Reset Password',
           style: GoogleFonts.dmSans(
@@ -41,32 +74,35 @@ class ForgotPasswordView extends GetView<ForgotPasswordController> {
         children: [
           Positioned.fill(child: trainerBackground()),
           SafeArea(
-            child: Obx(
-              () => Column(
-                children: [
-                  Expanded(
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 24,
-                        vertical: 24,
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          if (controller.currentStep.value == 0)
-                            _buildChooseMethodStep(),
-                          if (controller.currentStep.value == 1)
-                            _buildEnterContactStep(),
-                          if (controller.currentStep.value == 2)
-                            _buildVerifyOtpStep(),
-                          if (controller.currentStep.value == 3)
-                            _buildResetPasswordStep(),
-                        ],
-                      ),
+            child: Column(
+              children: [
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 24,
+                    ),
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 300),
+                      switchInCurve: Curves.easeInOut,
+                      switchOutCurve: Curves.easeInOut,
+                      transitionBuilder: (Widget child, Animation<double> animation) {
+                        return FadeTransition(
+                          opacity: animation,
+                          child: SlideTransition(
+                            position: Tween<Offset>(
+                              begin: const Offset(0.05, 0.0),
+                              end: Offset.zero,
+                            ).animate(animation),
+                            child: child,
+                          ),
+                        );
+                      },
+                      child: _buildStepContent(state, notifier),
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ],
@@ -74,9 +110,25 @@ class ForgotPasswordView extends GetView<ForgotPasswordController> {
     );
   }
 
+  Widget _buildStepContent(ForgotPasswordState state, ForgotPasswordNotifier notifier) {
+    switch (state.currentStep) {
+      case 0:
+        return _buildChooseMethodStep(notifier);
+      case 1:
+        return _buildEnterContactStep(state, notifier);
+      case 2:
+        return _buildVerifyOtpStep(state, notifier);
+      case 3:
+        return _buildResetPasswordStep(state, notifier);
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+
   // ─── Step 0: Choose contact method ─────────────────────────────────────────
-  Widget _buildChooseMethodStep() {
+  Widget _buildChooseMethodStep(ForgotPasswordNotifier notifier) {
     return Column(
+      key: const ValueKey(0),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 16),
@@ -104,7 +156,7 @@ class ForgotPasswordView extends GetView<ForgotPasswordController> {
           title: 'Email',
           subtitle: 'Receive a password reset link via email',
           color: kSky,
-          onTap: () => controller.selectContactMethod('email'),
+          onTap: () => notifier.selectContactMethod('email'),
         ),
         const SizedBox(height: 20),
         // Phone option
@@ -112,8 +164,8 @@ class ForgotPasswordView extends GetView<ForgotPasswordController> {
           icon: Icons.phone_rounded,
           title: 'Phone',
           subtitle: 'Get an OTP code via SMS',
-          color: kNeon,
-          onTap: () => controller.selectContactMethod('phone'),
+          color: _accent,
+          onTap: () => notifier.selectContactMethod('phone'),
         ),
         const SizedBox(height: 40),
       ],
@@ -180,10 +232,11 @@ class ForgotPasswordView extends GetView<ForgotPasswordController> {
   }
 
   // ─── Step 1: Enter contact method (email or phone) ──────────────────────────
-  Widget _buildEnterContactStep() {
-    final isEmail = controller.contactMethod.value == 'email';
+  Widget _buildEnterContactStep(ForgotPasswordState state, ForgotPasswordNotifier notifier) {
+    final isEmail = state.contactMethod == 'email';
 
     return Column(
+      key: const ValueKey(1),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 16),
@@ -208,46 +261,47 @@ class ForgotPasswordView extends GetView<ForgotPasswordController> {
         ),
         const SizedBox(height: 48),
         _buildGlassTextField(
-          controller:
-              isEmail ? controller.emailController : controller.phoneController,
+          controller: isEmail ? _emailController : _phoneController,
           hintText: isEmail ? 'your@email.com' : '+1234567890',
           icon: isEmail ? Icons.email_rounded : Icons.phone_rounded,
-          keyboardType:
-              isEmail ? TextInputType.emailAddress : TextInputType.phone,
+          keyboardType: isEmail ? TextInputType.emailAddress : TextInputType.phone,
         ),
         const SizedBox(height: 32),
-        Obx(
-          () => SizedBox(
-            width: double.infinity,
-            height: 52,
-            child: ElevatedButton(
-              onPressed: controller.isLoading.value ? null : controller.sendOtp,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: kNeon,
-                disabledBackgroundColor: kNeon.withOpacity(0.5),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: ElevatedButton(
+            onPressed: state.isLoading
+                ? null
+                : () => notifier.sendOtp(
+                      context,
+                      email: _emailController.text,
+                      phone: _phoneController.text,
+                    ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _accent,
+              disabledBackgroundColor: _accent.withOpacity(0.5),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
               ),
-              child:
-                  controller.isLoading.value
-                      ? const SizedBox(
-                        height: 24,
-                        width: 24,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(kInk),
-                        ),
-                      )
-                      : Text(
-                        'Send Code',
-                        style: GoogleFonts.dmSans(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: kInk,
-                        ),
-                      ),
             ),
+            child: state.isLoading
+                ? const SizedBox(
+                    height: 24,
+                    width: 24,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(kInk),
+                    ),
+                  )
+                : Text(
+                    'Send Code',
+                    style: GoogleFonts.dmSans(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: kInk,
+                    ),
+                  ),
           ),
         ),
         const SizedBox(height: 40),
@@ -256,8 +310,9 @@ class ForgotPasswordView extends GetView<ForgotPasswordController> {
   }
 
   // ─── Step 2: Verify OTP ─────────────────────────────────────────────────────
-  Widget _buildVerifyOtpStep() {
+  Widget _buildVerifyOtpStep(ForgotPasswordState state, ForgotPasswordNotifier notifier) {
     return Column(
+      key: const ValueKey(2),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 16),
@@ -280,74 +335,72 @@ class ForgotPasswordView extends GetView<ForgotPasswordController> {
         ),
         const SizedBox(height: 48),
         _buildGlassTextField(
-          controller: controller.otpController,
+          controller: _otpController,
           hintText: 'Enter 6-digit code',
           icon: Icons.pin_rounded,
           keyboardType: TextInputType.number,
         ),
         const SizedBox(height: 20),
-        Obx(
-          () => Center(
-            child: Text(
-              controller.otpResendCountdown.value > 0
-                  ? 'Resend code in ${controller.otpResendCountdown.value}s'
-                  : 'Didn\'t receive code?',
-              style: GoogleFonts.dmSans(
-                fontSize: 12,
-                fontWeight: FontWeight.w400,
-                color: controller.otpResendCountdown.value > 0 ? kMuted : kSky,
-              ),
+        Center(
+          child: Text(
+            state.otpResendCountdown > 0
+                ? 'Resend code in ${state.otpResendCountdown}s'
+                : 'Didn\'t receive code?',
+            style: GoogleFonts.dmSans(
+              fontSize: 12,
+              fontWeight: FontWeight.w400,
+              color: state.otpResendCountdown > 0 ? kMuted : kSky,
             ),
           ),
         ),
-        if (controller.otpResendCountdown.value == 0)
+        if (state.otpResendCountdown == 0)
           Align(
             child: TextButton(
-              onPressed: controller.resendOtp,
+              onPressed: () => notifier.resendOtp(
+                context,
+                email: _emailController.text,
+                phone: _phoneController.text,
+              ),
               child: Text(
                 'Resend Code',
                 style: GoogleFonts.dmSans(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  color: kNeon,
+                  color: _accent,
                 ),
               ),
             ),
           ),
         const SizedBox(height: 32),
-        Obx(
-          () => SizedBox(
-            width: double.infinity,
-            height: 52,
-            child: ElevatedButton(
-              onPressed:
-                  controller.isLoading.value ? null : controller.verifyOtp,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: kNeon,
-                disabledBackgroundColor: kNeon.withOpacity(0.5),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: ElevatedButton(
+            onPressed: state.isLoading ? null : () => notifier.verifyOtp(context, _emailController.text, _otpController.text),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _accent,
+              disabledBackgroundColor: _accent.withOpacity(0.5),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
               ),
-              child:
-                  controller.isLoading.value
-                      ? const SizedBox(
-                        height: 24,
-                        width: 24,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(kInk),
-                        ),
-                      )
-                      : Text(
-                        'Verify Code',
-                        style: GoogleFonts.dmSans(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: kInk,
-                        ),
-                      ),
             ),
+            child: state.isLoading
+                ? const SizedBox(
+                    height: 24,
+                    width: 24,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(kInk),
+                    ),
+                  )
+                : Text(
+                    'Verify Code',
+                    style: GoogleFonts.dmSans(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: kInk,
+                    ),
+                  ),
           ),
         ),
         const SizedBox(height: 40),
@@ -356,8 +409,9 @@ class ForgotPasswordView extends GetView<ForgotPasswordController> {
   }
 
   // ─── Step 3: Reset Password ────────────────────────────────────────────────
-  Widget _buildResetPasswordStep() {
+  Widget _buildResetPasswordStep(ForgotPasswordState state, ForgotPasswordNotifier notifier) {
     return Column(
+      key: const ValueKey(3),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 16),
@@ -379,63 +433,60 @@ class ForgotPasswordView extends GetView<ForgotPasswordController> {
           ),
         ),
         const SizedBox(height: 40),
-        Obx(
-          () => _buildGlassTextField(
-            controller: controller.newPasswordController,
-            hintText: 'New Password',
-            icon: Icons.lock_rounded,
-            isPassword: true,
-            showPassword: controller.showPassword.value,
-            onShowPasswordChanged:
-                (value) => controller.showPassword.value = value,
-          ),
+        _buildGlassTextField(
+          controller: _newPasswordController,
+          hintText: 'New Password',
+          icon: Icons.lock_rounded,
+          isPassword: true,
+          showPassword: state.showPassword,
+          onShowPasswordChanged: (value) => notifier.toggleShowPassword(),
         ),
         const SizedBox(height: 18),
-        Obx(
-          () => _buildGlassTextField(
-            controller: controller.confirmPasswordController,
-            hintText: 'Confirm Password',
-            icon: Icons.lock_rounded,
-            isPassword: true,
-            showPassword: controller.showConfirmPassword.value,
-            onShowPasswordChanged:
-                (value) => controller.showConfirmPassword.value = value,
-          ),
+        _buildGlassTextField(
+          controller: _confirmPasswordController,
+          hintText: 'Confirm Password',
+          icon: Icons.lock_rounded,
+          isPassword: true,
+          showPassword: state.showConfirmPassword,
+          onShowPasswordChanged: (value) => notifier.toggleShowConfirmPassword(),
         ),
         const SizedBox(height: 40),
-        Obx(
-          () => SizedBox(
-            width: double.infinity,
-            height: 52,
-            child: ElevatedButton(
-              onPressed:
-                  controller.isLoading.value ? null : controller.resetPassword,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: kNeon,
-                disabledBackgroundColor: kNeon.withOpacity(0.5),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: ElevatedButton(
+            onPressed: state.isLoading
+                ? null
+                : () => notifier.resetPassword(
+                      context,
+                      _emailController.text,
+                      _newPasswordController.text,
+                      _confirmPasswordController.text,
+                    ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _accent,
+              disabledBackgroundColor: _accent.withOpacity(0.5),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
               ),
-              child:
-                  controller.isLoading.value
-                      ? const SizedBox(
-                        height: 24,
-                        width: 24,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(kInk),
-                        ),
-                      )
-                      : Text(
-                        'Reset Password',
-                        style: GoogleFonts.dmSans(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: kInk,
-                        ),
-                      ),
             ),
+            child: state.isLoading
+                ? const SizedBox(
+                    height: 24,
+                    width: 24,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(kInk),
+                    ),
+                  )
+                : Text(
+                    'Reset Password',
+                    style: GoogleFonts.dmSans(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: kInk,
+                    ),
+                  ),
           ),
         ),
         const SizedBox(height: 40),
@@ -476,18 +527,15 @@ class ForgotPasswordView extends GetView<ForgotPasswordController> {
             color: kMuted,
           ),
           prefixIcon: Icon(icon, color: kSky),
-          suffixIcon:
-              isPassword
-                  ? GestureDetector(
-                    onTap: () => onShowPasswordChanged?.call(!showPassword),
-                    child: Icon(
-                      showPassword
-                          ? Icons.visibility_rounded
-                          : Icons.visibility_off_rounded,
-                      color: kMuted,
-                    ),
-                  )
-                  : null,
+          suffixIcon: isPassword
+              ? GestureDetector(
+                  onTap: () => onShowPasswordChanged?.call(!showPassword),
+                  child: Icon(
+                    showPassword ? Icons.visibility_rounded : Icons.visibility_off_rounded,
+                    color: kMuted,
+                  ),
+                )
+              : null,
           border: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 16,

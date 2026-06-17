@@ -3,18 +3,53 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/widgets.dart';
-import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../../routes/app_pages.dart';
+import '../../../routes/app_router.dart';
 import '../../../services/user_profile_service.dart';
+import '../../../providers/rx_compat.dart';
 
-class TrainerDashboardController extends GetxController {
-  TrainerDashboardController({FirebaseFirestore? firestore})
-    : _firestore = firestore ?? FirebaseFirestore.instance;
-
+class TrainerDashboardController extends ChangeNotifier {
+  final Ref ref;
   final FirebaseFirestore _firestore;
+
+  TrainerDashboardController({required this.ref, FirebaseFirestore? firestore})
+    : _firestore = firestore ?? FirebaseFirestore.instance {
+    
+    displayName.addListener(notifyListeners);
+    profilePhotoUrl.addListener(notifyListeners);
+    currentTabIndex.addListener(notifyListeners);
+    isLoading.addListener(notifyListeners);
+    isSavingProfile.addListener(notifyListeners);
+    isActionLoading.addListener(notifyListeners);
+    profile.addListener(notifyListeners);
+    bookings.addListener(notifyListeners);
+    reviews.addListener(notifyListeners);
+    payouts.addListener(notifyListeners);
+    posts.addListener(notifyListeners);
+    pendingBookingsCount.addListener(notifyListeners);
+    todaySessionsCount.addListener(notifyListeners);
+    monthlyIncome.addListener(notifyListeners);
+    avgRating.addListener(notifyListeners);
+    totalReviews.addListener(notifyListeners);
+    isUploadingPostImage.addListener(notifyListeners);
+    isCreatingPost.addListener(notifyListeners);
+    draftPostImageUrl.addListener(notifyListeners);
+    selectedPostCategory.addListener(notifyListeners);
+    availability.addListener(notifyListeners);
+
+    final user = FirebaseAuth.instance.currentUser;
+    final name = user?.displayName?.trim();
+    if (name != null && name.isNotEmpty) {
+      displayName.value = name;
+      displayNameController.text = name;
+    }
+    profilePhotoUrl.value = user?.photoURL?.trim() ?? '';
+
+    _listenTrainerData();
+  }
 
   final displayName = 'Trainer'.obs;
   final profilePhotoUrl = ''.obs;
@@ -28,6 +63,7 @@ class TrainerDashboardController extends GetxController {
   final reviews = <Map<String, dynamic>>[].obs;
   final payouts = <Map<String, dynamic>>[].obs;
   final posts = <Map<String, dynamic>>[].obs;
+  final promotions = <Map<String, dynamic>>[].obs;
 
   final pendingBookingsCount = 0.obs;
   final todaySessionsCount = 0.obs;
@@ -35,11 +71,15 @@ class TrainerDashboardController extends GetxController {
   final avgRating = 0.0.obs;
   final totalReviews = 0.obs;
 
+  final displayNameController = TextEditingController();
   final sessionPriceController = TextEditingController();
   final bioController = TextEditingController();
   final specializationController = TextEditingController();
   final languagesController = TextEditingController();
   final sessionLocationController = TextEditingController();
+  final ageController = TextEditingController();
+  final heightController = TextEditingController();
+  final experienceYearsController = TextEditingController();
   final payoutAmountController = TextEditingController();
   final postTitleController = TextEditingController();
   final postCaptionController = TextEditingController();
@@ -64,33 +104,24 @@ class TrainerDashboardController extends GetxController {
   final _supabase = Supabase.instance.client;
 
   @override
-  void onInit() {
-    super.onInit();
-    final user = FirebaseAuth.instance.currentUser;
-    final name = user?.displayName?.trim();
-    if (name != null && name.isNotEmpty) {
-      displayName.value = name;
-    }
-    profilePhotoUrl.value = user?.photoURL?.trim() ?? '';
-
-    _listenTrainerData();
-  }
-
-  @override
-  void onClose() {
+  void dispose() {
     for (final sub in _subs) {
       sub.cancel();
     }
+    displayNameController.dispose();
     sessionPriceController.dispose();
     bioController.dispose();
     specializationController.dispose();
     languagesController.dispose();
     sessionLocationController.dispose();
+    ageController.dispose();
+    heightController.dispose();
+    experienceYearsController.dispose();
     payoutAmountController.dispose();
     postTitleController.dispose();
     postCaptionController.dispose();
     postTagsController.dispose();
-    super.onClose();
+    super.dispose();
   }
 
   List<Map<String, dynamic>> get pendingBookings {
@@ -107,15 +138,16 @@ class TrainerDashboardController extends GetxController {
         if (status == 'cancelled' || status == 'rejected') return false;
         final scheduledAt = _toDateTime(
           b['scheduledAt'] ?? b['sessionAt'] ?? b['dateTime'],
+          b,
         );
         return scheduledAt != null && scheduledAt.isAfter(now);
       }).toList()
       ..sort((a, b) {
         final aDate =
-            _toDateTime(a['scheduledAt'] ?? a['sessionAt'] ?? a['dateTime']) ??
+            _toDateTime(a['scheduledAt'] ?? a['sessionAt'] ?? a['dateTime'], a) ??
             DateTime.now();
         final bDate =
-            _toDateTime(b['scheduledAt'] ?? b['sessionAt'] ?? b['dateTime']) ??
+            _toDateTime(b['scheduledAt'] ?? b['sessionAt'] ?? b['dateTime'], b) ??
             DateTime.now();
         return aDate.compareTo(bDate);
       });
@@ -138,33 +170,49 @@ class TrainerDashboardController extends GetxController {
       }).toList()
       ..sort((a, b) {
         final aDate =
-            _toDateTime(a['scheduledAt'] ?? a['sessionAt'] ?? a['dateTime']) ??
+            _toDateTime(a['scheduledAt'] ?? a['sessionAt'] ?? a['dateTime'], a) ??
             DateTime.now();
         final bDate =
-            _toDateTime(b['scheduledAt'] ?? b['sessionAt'] ?? b['dateTime']) ??
+            _toDateTime(b['scheduledAt'] ?? b['sessionAt'] ?? b['dateTime'], b) ??
             DateTime.now();
         return aDate.compareTo(bDate);
       });
   }
 
   List<Map<String, dynamic>> get confirmedUpcomingBookings {
-    final now = DateTime.now();
     return bookings.where((b) {
         final status = (b['status'] ?? '').toString().toLowerCase();
         if (status != 'confirmed' && status != 'accepted') return false;
         final scheduledAt = _toDateTime(
           b['scheduledAt'] ?? b['sessionAt'] ?? b['dateTime'],
+          b,
         );
-        return scheduledAt != null && scheduledAt.isAfter(now);
+        return scheduledAt != null;
       }).toList()
       ..sort((a, b) {
         final aDate =
-            _toDateTime(a['scheduledAt'] ?? a['sessionAt'] ?? a['dateTime']) ??
+            _toDateTime(a['scheduledAt'] ?? a['sessionAt'] ?? a['dateTime'], a) ??
             DateTime.now();
         final bDate =
-            _toDateTime(b['scheduledAt'] ?? b['sessionAt'] ?? b['dateTime']) ??
+            _toDateTime(b['scheduledAt'] ?? b['sessionAt'] ?? b['dateTime'], b) ??
             DateTime.now();
         return aDate.compareTo(bDate);
+      });
+  }
+
+  List<Map<String, dynamic>> get pastBookingsHistory {
+    return bookings.where((b) {
+      final status = (b['status'] ?? '').toString().toLowerCase();
+      return status == 'completed' || status == 'cancelled' || status == 'rejected';
+    }).toList()
+      ..sort((a, b) {
+        final aDate =
+            _toDateTime(a['scheduledAt'] ?? a['sessionAt'] ?? a['dateTime'], a) ??
+            DateTime.now();
+        final bDate =
+            _toDateTime(b['scheduledAt'] ?? b['sessionAt'] ?? b['dateTime'], b) ??
+            DateTime.now();
+        return bDate.compareTo(aDate); // Sort newest first for history
       });
   }
 
@@ -183,6 +231,12 @@ class TrainerDashboardController extends GetxController {
 
     isSavingProfile.value = true;
     try {
+      final nameText = displayNameController.text.trim();
+      if (nameText.isNotEmpty) {
+        await FirebaseAuth.instance.currentUser?.updateDisplayName(nameText);
+        displayName.value = nameText;
+      }
+
       await _firestore.collection('trainerProfiles').doc(uid).set({
         'bio': bioController.text.trim(),
         'sessionPrice':
@@ -190,34 +244,47 @@ class TrainerDashboardController extends GetxController {
         'specializations': _splitCsv(specializationController.text),
         'languages': _splitCsv(languagesController.text),
         'sessionLocations': _splitCsv(sessionLocationController.text),
+        'experienceYears': int.tryParse(experienceYearsController.text.trim()) ?? 0,
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
       await _firestore.collection('users').doc(uid).set({
         'trainerProfileComplete': true,
+        if (nameText.isNotEmpty) 'name': nameText,
+        if (nameText.isNotEmpty) 'fullName': nameText,
+        'age': int.tryParse(ageController.text.trim()) ?? 0,
+        'height': int.tryParse(heightController.text.trim()) ?? 0,
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
-      Get.snackbar('Profile saved', 'Trainer profile updated successfully.');
+      showSnackbar('Profile saved', 'Trainer profile updated successfully.');
     } catch (_) {
-      Get.snackbar('Save failed', 'Could not update trainer profile.');
+      showSnackbar('Save failed', 'Could not update trainer profile.');
     } finally {
       isSavingProfile.value = false;
     }
   }
 
   Future<void> saveProfileDraft({
+    required String name,
     required String sessionPrice,
     required String bio,
     required String specializations,
     required String languages,
     required String locations,
+    required String age,
+    required String height,
+    required String experienceYears,
   }) async {
+    displayNameController.text = name;
     sessionPriceController.text = sessionPrice;
     bioController.text = bio;
     specializationController.text = specializations;
     languagesController.text = languages;
     sessionLocationController.text = locations;
+    ageController.text = age;
+    heightController.text = height;
+    experienceYearsController.text = experienceYears;
     await saveProfile();
   }
 
@@ -260,12 +327,16 @@ class TrainerDashboardController extends GetxController {
     );
   }
 
+  Future<void> completeBooking(Map<String, dynamic> booking) async {
+    await _setBookingStatus(booking, 'completed');
+  }
+
   Future<void> requestPayout() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
     final amount = double.tryParse(payoutAmountController.text.trim()) ?? 0;
     if (amount <= 0) {
-      Get.snackbar('Invalid amount', 'Enter a valid payout amount.');
+      showSnackbar('Invalid amount', 'Enter a valid payout amount.');
       return;
     }
 
@@ -277,18 +348,18 @@ class TrainerDashboardController extends GetxController {
         'requestedAt': FieldValue.serverTimestamp(),
       });
       payoutAmountController.clear();
-      Get.snackbar(
+      showSnackbar(
         'Payout requested',
         'Your withdrawal request was submitted.',
       );
     } catch (_) {
-      Get.snackbar('Request failed', 'Could not submit payout request.');
+      showSnackbar('Request failed', 'Could not submit payout request.');
     }
   }
 
   Future<void> logout() async {
     await FirebaseAuth.instance.signOut();
-    Get.offAllNamed(Routes.LOGIN);
+    ref.read(routerProvider).go(Routes.LOGIN);
   }
 
   Future<void> pickAndUploadPostImage() async {
@@ -326,9 +397,9 @@ class TrainerDashboardController extends GetxController {
       draftPostImageUrl.value = _supabase.storage
           .from('images')
           .getPublicUrl(path);
-      Get.snackbar('Image uploaded', 'Post image is ready.');
+      showSnackbar('Image uploaded', 'Post image is ready.');
     } catch (_) {
-      Get.snackbar('Upload failed', 'Could not upload the post image.');
+      showSnackbar('Upload failed', 'Could not upload the post image.');
     } finally {
       isUploadingPostImage.value = false;
     }
@@ -363,7 +434,7 @@ class TrainerDashboardController extends GetxController {
     final title = postTitleController.text.trim();
     final caption = postCaptionController.text.trim();
     if (title.isEmpty && caption.isEmpty) {
-      Get.snackbar('Missing content', 'Add a title or caption for your post.');
+      showSnackbar('Missing content', 'Add a title or caption for your post.');
       return false;
     }
 
@@ -382,6 +453,7 @@ class TrainerDashboardController extends GetxController {
         'likesCount': 0,
         'commentsCount': 0,
         'isActive': true,
+        'date': _formatDateIso(date),
         'postDate': _formatDateIso(date),
         'postDay': date.day,
         'postMonth': date.month,
@@ -392,10 +464,10 @@ class TrainerDashboardController extends GetxController {
       });
 
       clearPostDraft();
-      Get.snackbar('Post published', 'Your trainer post is now live.');
+      showSnackbar('Post published', 'Your trainer post is now live.');
       return true;
     } catch (_) {
-      Get.snackbar('Post failed', 'Could not publish this post.');
+      showSnackbar('Post failed', 'Could not publish this post.');
       return false;
     } finally {
       isCreatingPost.value = false;
@@ -414,14 +486,14 @@ class TrainerDashboardController extends GetxController {
         'isActive': !isActive,
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
-      Get.snackbar(
+      showSnackbar(
         isActive ? 'Post archived' : 'Post activated',
         isActive
             ? 'This post is now hidden from your public feed.'
             : 'This post is visible again.',
       );
     } catch (_) {
-      Get.snackbar('Update failed', 'Could not update post visibility.');
+      showSnackbar('Update failed', 'Could not update post visibility.');
     } finally {
       isActionLoading.value = false;
     }
@@ -435,9 +507,9 @@ class TrainerDashboardController extends GetxController {
     isActionLoading.value = true;
     try {
       await _firestore.collection('trainerPosts').doc(postId).delete();
-      Get.snackbar('Post deleted', 'Trainer post removed successfully.');
+      showSnackbar('Post deleted', 'Trainer post removed successfully.');
     } catch (_) {
-      Get.snackbar('Delete failed', 'Could not delete this post.');
+      showSnackbar('Delete failed', 'Could not delete this post.');
     } finally {
       isActionLoading.value = false;
     }
@@ -445,10 +517,12 @@ class TrainerDashboardController extends GetxController {
 
   Future<void> updateProfilePhoto() async {
     try {
-      final profileService = Get.find<UserProfileService>();
-      final ok = await profileService.pickAndUploadProfilePhoto();
+      final profileService = ref.read(userProfileServiceProvider.notifier);
+      final ok = await profileService.pickAndUploadProfilePhoto(
+        onNotification: (title, message) => showSnackbar(title, message),
+      );
       if (ok) {
-        profilePhotoUrl.value = profileService.photoUrl.value;
+        profilePhotoUrl.value = ref.read(userProfileServiceProvider).photoUrl;
         final uid = FirebaseAuth.instance.currentUser?.uid;
         if (uid != null && uid.isNotEmpty) {
           await _firestore.collection('trainerProfiles').doc(uid).set({
@@ -458,7 +532,7 @@ class TrainerDashboardController extends GetxController {
         }
       }
     } catch (_) {
-      Get.snackbar('Photo update failed', 'Could not update trainer photo.');
+      showSnackbar('Photo update failed', 'Could not update trainer photo.');
     }
   }
 
@@ -571,11 +645,16 @@ class TrainerDashboardController extends GetxController {
         final name = (data['name'] ?? data['fullName'] ?? '').toString().trim();
         if (name.isNotEmpty) {
           displayName.value = name;
+          displayNameController.text = name;
         }
         final docPhoto = (data['photoUrl'] ?? '').toString().trim();
         if (docPhoto.isNotEmpty) {
           profilePhotoUrl.value = docPhoto;
         }
+        final age = data['age'] != null ? data['age'].toString() : '';
+        final height = data['height'] != null ? data['height'].toString() : '';
+        if (age.isNotEmpty) ageController.text = age;
+        if (height.isNotEmpty) heightController.text = height;
       }),
     );
 
@@ -594,6 +673,8 @@ class TrainerDashboardController extends GetxController {
         specializationController.text = _joinCsv(data['specializations']);
         languagesController.text = _joinCsv(data['languages']);
         sessionLocationController.text = _joinCsv(data['sessionLocations']);
+        final exp = data['experienceYears'] != null ? data['experienceYears'].toString() : '';
+        if (exp.isNotEmpty) experienceYearsController.text = exp;
 
         final rawAvailability = data['availability'];
         if (rawAvailability is Map) {
@@ -665,6 +746,16 @@ class TrainerDashboardController extends GetxController {
           }, onError: (_) {}),
     );
 
+    _subs.add(
+      _firestore
+          .collection('promotions')
+          .where('trainerId', isEqualTo: uid)
+          .snapshots()
+          .listen((snap) {
+            promotions.assignAll(snap.docs.map((d) => {'id': d.id, ...d.data()}));
+          }, onError: (_) {}),
+    );
+
     Future<void>.delayed(const Duration(milliseconds: 500), () {
       isLoading.value = false;
     });
@@ -680,7 +771,7 @@ class TrainerDashboardController extends GetxController {
     final now = DateTime.now();
     todaySessionsCount.value =
         bookings.where((b) {
-          final dt = _toDateTime(b['scheduledAt'] ?? b['sessionAt']);
+          final dt = _toDateTime(b['scheduledAt'] ?? b['sessionAt'], b);
           if (dt == null) return false;
           return dt.year == now.year &&
               dt.month == now.month &&
@@ -690,14 +781,34 @@ class TrainerDashboardController extends GetxController {
     final startOfMonth = DateTime(now.year, now.month, 1);
     monthlyIncome.value = bookings.fold(0.0, (runningTotal, booking) {
       final status = (booking['status'] ?? '').toString().toLowerCase();
-      if (status != 'completed' && booking['paid'] != true) {
+      if (status == 'cancelled' || status == 'rejected') {
         return runningTotal;
       }
 
-      final dt = _toDateTime(booking['scheduledAt'] ?? booking['sessionAt']);
+      final paymentStatus = (booking['paymentStatus'] ?? '').toString().toLowerCase();
+      final isPaid = booking['paid'] == true ||
+                     paymentStatus == 'fully_paid' ||
+                     paymentStatus == 'partially_paid' ||
+                     (paymentStatus.isEmpty && status == 'completed');
+
+      if (!isPaid) {
+        return runningTotal;
+      }
+
+      double amount = _toDouble(booking['amountPaid']);
+      if (amount <= 0) {
+        if (booking['paid'] == true || (paymentStatus.isEmpty && status == 'completed')) {
+          amount = _toDouble(booking['price'] ?? booking['amount']);
+        }
+      }
+
+      if (amount <= 0) {
+        return runningTotal;
+      }
+
+      final dt = _toDateTime(booking['scheduledAt'] ?? booking['sessionAt'], booking);
       if (dt != null && dt.isBefore(startOfMonth)) return runningTotal;
 
-      final amount = _toDouble(booking['amount'] ?? booking['price']);
       return runningTotal + amount;
     });
   }
@@ -736,18 +847,146 @@ class TrainerDashboardController extends GetxController {
         'updatedBy': FirebaseAuth.instance.currentUser?.uid,
         if (reason != null) 'statusReason': reason,
       }, SetOptions(merge: true));
-      Get.snackbar('Booking updated', 'Status set to $status.');
+
+      // Increment client's sessions count & streak dynamically when marked completed
+      if (status == 'completed') {
+        final clientUid = booking['userId']?.toString() ?? '';
+        if (clientUid.isNotEmpty) {
+          await _firestore.collection('users').doc(clientUid).set({
+            'totalSessions': FieldValue.increment(1),
+            'streak': FieldValue.increment(1),
+          }, SetOptions(merge: true)).catchError((_) {});
+        }
+      }
+
+      final clientUid = booking['userId']?.toString() ?? '';
+      final trainerUid = booking['trainerId']?.toString() ?? FirebaseAuth.instance.currentUser?.uid ?? '';
+
+      if (status == 'cancelled') {
+        final isPaid = booking['paid'] == true ||
+                       booking['paymentStatus'] == 'fully_paid' ||
+                       booking['paymentStatus'] == 'partially_paid';
+        if (isPaid) {
+          double amountPaid = (booking['amountPaid'] as num?)?.toDouble() ?? 0.0;
+          if (amountPaid == 0.0) {
+            amountPaid = (booking['price'] as num?)?.toDouble() ?? 0.0;
+          }
+          final clientName = (booking['clientName'] ?? booking['userName'] ?? 'Client').toString();
+          if (clientUid.isNotEmpty && amountPaid > 0) {
+            await _firestore.collection('refunds').add({
+              'bookingId': bookingId,
+              'userId': clientUid,
+              'clientName': clientName,
+              'trainerId': trainerUid,
+              'trainerName': displayName.value,
+              'amount': amountPaid,
+              'status': 'pending',
+              'createdAt': FieldValue.serverTimestamp(),
+              'sessionDate': (booking['date'] ?? '').toString(),
+              'sessionTime': (booking['time'] ?? '').toString(),
+              'sessionType': (booking['type'] ?? booking['sessionType'] ?? 'Session').toString(),
+            });
+          }
+        }
+      }
+
+      if (clientUid.isNotEmpty && clientUid != trainerUid) {
+        String title = 'Booking Updated';
+        String body = 'Your session status was updated to $status.';
+        String color = 'sky';
+        
+        final sessionType = (booking['type'] ?? booking['sessionType'] ?? 'Session').toString();
+        final formattedDate = (booking['date'] ?? '').toString();
+        final selectedSlot = (booking['time'] ?? '').toString();
+
+        if (status == 'confirmed') {
+          title = 'Booking Confirmed';
+          body = 'Your $sessionType session with ${displayName.value} on $formattedDate at $selectedSlot has been confirmed.';
+          color = 'sky';
+        } else if (status == 'rejected') {
+          title = 'Booking Request Declined';
+          body = 'Your request for a $sessionType session with ${displayName.value} on $formattedDate at $selectedSlot was declined.';
+          color = 'coral';
+        } else if (status == 'cancelled') {
+          title = 'Booking Cancelled';
+          body = 'Your $sessionType session with ${displayName.value} on $formattedDate at $selectedSlot was cancelled.';
+          color = 'coral';
+        } else if (status == 'completed') {
+          title = 'Session Completed';
+          body = 'Your $sessionType session with ${displayName.value} on $formattedDate at $selectedSlot has been completed. Keep up the great work!';
+          color = 'sky';
+        }
+
+        await _firestore
+            .collection('notifications')
+            .doc(clientUid)
+            .collection('items')
+            .add({
+          'title': title,
+          'body': body,
+          'type': 'booking',
+          'color': color,
+          'icon': 'calendar',
+          'read': false,
+          'createdAt': FieldValue.serverTimestamp(),
+          'senderId': trainerUid,
+          'senderName': displayName.value,
+          'senderPhotoUrl': profilePhotoUrl.value,
+        });
+      }
+
+      showSnackbar('Booking updated', 'Status set to $status.');
     } catch (_) {
-      Get.snackbar('Action failed', 'Could not update this booking.');
+      showSnackbar('Action failed', 'Could not update this booking.');
     } finally {
       isActionLoading.value = false;
     }
   }
 
-  DateTime? _toDateTime(dynamic raw) {
+  DateTime? _toDateTime(dynamic raw, [Map<String, dynamic>? booking]) {
     if (raw is Timestamp) return raw.toDate();
     if (raw is DateTime) return raw;
     if (raw is String) return DateTime.tryParse(raw);
+    
+    // Fallback: parse from date & time strings
+    if (booking != null) {
+      final dateStr = booking['date']?.toString() ?? '';
+      final timeStr = booking['time']?.toString() ?? '';
+      if (dateStr.isNotEmpty) {
+        try {
+          final clean = dateStr.replaceAll(',', '').trim();
+          final parts = clean.split(' '); // ["Wed", "Jun", "10", "2026"]
+          if (parts.length >= 4) {
+            final monthStr = parts[1];
+            final dayVal = int.parse(parts[2]);
+            final yearVal = int.parse(parts[3]);
+
+            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            final monthVal = months.indexOf(monthStr) + 1;
+
+            int hourVal = 9;
+            int minVal = 0;
+            if (timeStr.isNotEmpty) {
+              final tParts = timeStr.trim().split(' ');
+              final timeParts = tParts[0].split(':');
+              hourVal = int.parse(timeParts[0]);
+              minVal = int.parse(timeParts[1]);
+              if (tParts.length > 1) {
+                final ampm = tParts[1].toLowerCase();
+                if (ampm == 'pm' && hourVal < 12) {
+                  hourVal += 12;
+                } else if (ampm == 'am' && hourVal == 12) {
+                  hourVal = 0;
+                }
+              }
+            }
+            if (monthVal > 0) {
+              return DateTime(yearVal, monthVal, dayVal, hourVal, minVal);
+            }
+          }
+        } catch (_) {}
+      }
+    }
     return null;
   }
 
@@ -804,4 +1043,123 @@ class TrainerDashboardController extends GetxController {
         return 'image/jpeg';
     }
   }
+
+  List<Map<String, dynamic>> get earningsHistory {
+    final history = <Map<String, dynamic>>[];
+
+    // 1. Add payments and refunds from bookings
+    for (final b in bookings) {
+      final status = (b['status'] ?? '').toString().toLowerCase();
+      final clientName = (b['clientName'] ?? b['userName'] ?? 'Client').toString();
+      final sessionType = (b['type'] ?? b['sessionType'] ?? 'Session').toString();
+      final date = (b['date'] ?? '').toString();
+      final time = (b['time'] ?? '').toString();
+      
+      final paymentStatus = (b['paymentStatus'] ?? '').toString().toLowerCase();
+      final isPaid = b['paid'] == true ||
+                     paymentStatus == 'fully_paid' ||
+                     paymentStatus == 'partially_paid' ||
+                     (paymentStatus.isEmpty && status == 'completed');
+
+      if (!isPaid) {
+        continue;
+      }
+
+      double amountPaid = _toDouble(b['amountPaid']);
+      if (amountPaid <= 0) {
+        if (b['paid'] == true || (paymentStatus.isEmpty && status == 'completed')) {
+          amountPaid = _toDouble(b['price'] ?? b['amount']);
+        }
+      }
+
+      if (amountPaid <= 0) continue;
+
+      // Calculate timestamp for sorting
+      final createdAtRaw = b['createdAt'] ?? b['updatedAt'] ?? b['scheduledAt'] ?? b['sessionAt'];
+      DateTime dt = _toDateTime(createdAtRaw, b) ?? DateTime.now();
+
+      if (status == 'cancelled' || status == 'rejected') {
+        history.add({
+          'type': 'refund',
+          'title': 'Refund — $clientName Session',
+          'subtitle': '$sessionType on $date at $time',
+          'amount': -amountPaid,
+          'dateTime': dt,
+          'status': 'completed',
+        });
+      } else {
+        // Active booking payment
+        history.add({
+          'type': 'payment',
+          'title': 'Payment from $clientName',
+          'subtitle': '$sessionType on $date at $time',
+          'amount': amountPaid,
+          'dateTime': dt,
+          'status': 'completed',
+        });
+      }
+    }
+
+    // 2. Add payouts
+    for (final p in payouts) {
+      final status = (p['status'] ?? 'requested').toString();
+      final amount = _toDouble(p['amount']);
+      final reqAtRaw = p['requestedAt'] ?? p['approvedAt'];
+      DateTime dt = _toDateTime(reqAtRaw) ?? DateTime.now();
+
+      history.add({
+        'type': 'payout',
+        'title': 'Payout Request',
+        'subtitle': 'Withdrawal to Bank Account',
+        'amount': -amount,
+        'dateTime': dt,
+        'status': status,
+      });
+    }
+
+    // Sort by date descending
+    history.sort((a, b) {
+      final dtA = a['dateTime'] as DateTime;
+      final dtB = b['dateTime'] as DateTime;
+      return dtB.compareTo(dtA);
+    });
+
+    return history;
+  }
+
+  Future<void> addPromoCode(String code, int discount) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || uid.isEmpty) return;
+    if (code.isEmpty || discount <= 0 || discount > 100) {
+      showSnackbar('Invalid Promo', 'Please enter a valid code and discount percentage (1-100).');
+      return;
+    }
+
+    try {
+      await _firestore.collection('promotions').add({
+        'code': code.trim().toUpperCase(),
+        'discount': discount,
+        'trainerId': uid,
+        'trainerName': displayName.value,
+        'isActive': true,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      showSnackbar('Promotion Created', 'Promo code $code ($discount% off) is now active.');
+    } catch (_) {
+      showSnackbar('Error', 'Failed to create promotion.');
+    }
+  }
+
+  Future<void> deletePromoCode(String id) async {
+    try {
+      await _firestore.collection('promotions').doc(id).delete();
+      showSnackbar('Deleted', 'Promotion has been deleted.');
+    } catch (_) {
+      showSnackbar('Error', 'Failed to delete promotion.');
+    }
+  }
 }
+
+final trainerDashboardProvider = ChangeNotifierProvider((ref) {
+  return TrainerDashboardController(ref: ref);
+});
