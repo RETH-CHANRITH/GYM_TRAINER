@@ -241,10 +241,6 @@ class ApiException implements Exception {
 }
 
 final apiClientProvider = Provider<ApiClient>((ref) {
-  // Local development (Android Emulator):
-  return ApiClient(baseUrl: 'http://10.0.2.2:5000/api/v1');
-  // Local development (iOS Simulator):
-  // return ApiClient(baseUrl: 'http://localhost:5000/api/v1');
   // Production:
-  // return ApiClient(baseUrl: 'https://gym-trainer-backend-9lxr.onrender.com/api/v1');
+  return ApiClient(baseUrl: 'https://gym-trainer-backend-9lxr.onrender.com/api/v1');
 });
