@@ -242,5 +242,5 @@ class ApiException implements Exception {
 
 final apiClientProvider = Provider<ApiClient>((ref) {
   // Production:
-  return ApiClient(baseUrl: 'https://gym-trainer-afeu.onrender.com/api/v1');
+  return ApiClient(baseUrl: 'https://gym-trainer-backend-9lxr.onrender.com/api/v1');
 });
