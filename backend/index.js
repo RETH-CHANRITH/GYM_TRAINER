@@ -16,6 +16,9 @@ try {
     // Use base64-encoded service account (more reliable for Render)
     const decoded = Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT_BASE64, 'base64').toString('utf-8');
     serviceAccount = JSON.parse(decoded);
+    if (serviceAccount && serviceAccount.private_key) {
+      serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+    }
   } else if (process.env.FIREBASE_PROJECT_ID) {
     // Fallback: build from individual env vars
     serviceAccount = {
