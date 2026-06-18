@@ -15,7 +15,7 @@ class EmailService {
 
   static async sendOtpEmail(toEmail, otp, userName = 'Gym Member') {
     const transporter = this.getTransporter();
-    
+
     // HTML email template with premium styling (dark themed, neon green highlights)
     const htmlContent = `
     <!DOCTYPE html>
