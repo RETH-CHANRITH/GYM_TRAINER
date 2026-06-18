@@ -14,8 +14,6 @@ class EmailService {
   }
 
   static async sendOtpEmail(toEmail, otp, userName = 'Gym Member') {
-    const transporter = this.getTransporter();
-
     // HTML email template with premium styling (dark themed, neon green highlights)
     const htmlContent = `
     <!DOCTYPE html>
@@ -134,6 +132,41 @@ class EmailService {
     </html>
     `;
 
+    const resendApiKey = process.env.RESEND_API_KEY;
+
+    if (resendApiKey) {
+      console.log(`✉️ Attempting to send email to ${toEmail} via Resend HTTP API...`);
+      try {
+        const response = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${resendApiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            from: 'Gym Trainer <onboarding@resend.dev>',
+            to: toEmail,
+            subject: '🔑 Password Reset OTP Code - Gym Trainer',
+            html: htmlContent,
+          }),
+        });
+
+        const resData = await response.json();
+        if (response.ok) {
+          console.log(`✅ Email sent successfully via Resend. ID: ${resData.id}`);
+          return resData;
+        } else {
+          console.error(`❌ Resend HTTP API error status ${response.status}:`, resData);
+          // Fall through to SMTP fallback if API fails
+        }
+      } catch (err) {
+        console.error('❌ Failed to connect/send via Resend HTTP API:', err.message);
+        // Fall through to SMTP fallback if connection fails
+      }
+    }
+
+    console.log(`✉️ Falling back/attempting to send email to ${toEmail} via SMTP...`);
+    const transporter = this.getTransporter();
     const mailOptions = {
       from: `"Gym Trainer App" <${process.env.SMTP_USER}>`,
       to: toEmail,
