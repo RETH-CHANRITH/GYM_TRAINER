@@ -14,10 +14,21 @@ let firebaseInitialized = false;
 try {
   if (process.env.FIREBASE_SERVICE_ACCOUNT_BASE64) {
     // Use base64-encoded service account (more reliable for Render)
+    console.log('📦 FIREBASE_SERVICE_ACCOUNT_BASE64 length:', process.env.FIREBASE_SERVICE_ACCOUNT_BASE64.length);
     const decoded = Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT_BASE64, 'base64').toString('utf-8');
-    serviceAccount = JSON.parse(decoded);
-    if (serviceAccount && serviceAccount.private_key) {
-      serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+    console.log('📦 Decoded string length:', decoded.length);
+    console.log('📦 Decoded preview:', decoded.substring(0, 100) + '...');
+    try {
+      serviceAccount = JSON.parse(decoded);
+      console.log('📦 Parsed serviceAccount keys:', Object.keys(serviceAccount));
+      if (serviceAccount && serviceAccount.private_key) {
+        console.log('📦 Private key length:', serviceAccount.private_key.length);
+        serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+        console.log('📦 Private key start:', serviceAccount.private_key.substring(0, 30));
+      }
+    } catch (parseError) {
+      console.error('❌ JSON parsing of decoded credentials failed:', parseError.message);
+      throw parseError;
     }
   } else if (process.env.FIREBASE_PROJECT_ID) {
     // Fallback: build from individual env vars
