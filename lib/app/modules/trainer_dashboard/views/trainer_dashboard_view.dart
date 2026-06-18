@@ -8,7 +8,6 @@ import 'package:go_router/go_router.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:math';
-
 import '../../../../config/glass_ui.dart';
 import '../controllers/trainer_dashboard_controller.dart';
 import '../../../providers/rx_compat.dart';

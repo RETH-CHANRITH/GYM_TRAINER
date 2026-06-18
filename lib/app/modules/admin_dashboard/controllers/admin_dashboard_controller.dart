@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http/http.dart' as http;
 
 import '../../../routes/app_router.dart';
 import '../../../providers/rx_compat.dart';
@@ -1230,6 +1232,34 @@ class AdminDashboardController extends ChangeNotifier {
         'performedBy': FirebaseAuth.instance.currentUser?.uid ?? 'admin',
         'createdAt': FieldValue.serverTimestamp(),
       });
+
+      // ── Send real FCM push to all devices via backend ──────────────────
+      try {
+        final idToken =
+            await FirebaseAuth.instance.currentUser?.getIdToken();
+        if (idToken != null) {
+          final pushRes = await http
+              .post(
+                Uri.parse(
+                    'https://gym-trainer-afeu.onrender.com/api/v1/admin/send-campaign-push'),
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': 'Bearer $idToken',
+                },
+                body: jsonEncode({
+                  'title': title,
+                  'discount': discount,
+                  'label': label,
+                }),
+              )
+              .timeout(const Duration(seconds: 30));
+          debugPrint(
+              '📱 FCM push response: ${pushRes.statusCode} ${pushRes.body}');
+        }
+      } catch (pushErr) {
+        // Push failure is non-critical — campaign is already published
+        debugPrint('⚠️ FCM push failed (non-critical): $pushErr');
+      }
 
       showSnackbar('Campaign published', 'All clients notified successfully.');
     } catch (e) {

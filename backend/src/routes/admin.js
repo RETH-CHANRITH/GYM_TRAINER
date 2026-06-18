@@ -363,4 +363,94 @@ async function getUserGrowth() {
   return months;
 }
 
+/**
+ * POST /api/v1/admin/send-campaign-push
+ * Send FCM push notification to all users when a campaign is published.
+ * Body: { title, discount, label }
+ */
+router.post('/send-campaign-push', verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const { title, discount, label } = req.body;
+    if (!title || discount === undefined || !label) {
+      return res.status(400).json({ success: false, message: 'title, discount, and label are required.' });
+    }
+
+    const db = admin.firestore();
+
+    // Fetch all users that have an FCM token stored
+    const usersSnap = await db.collection('users').get();
+    const tokens = [];
+
+    usersSnap.forEach((doc) => {
+      const data = doc.data();
+      const role = (data.role || 'user').toLowerCase();
+      // Only send to regular users and trainers, not admins
+      if (role !== 'admin' && data.fcmToken && data.fcmToken.length > 10) {
+        tokens.push(data.fcmToken);
+      }
+    });
+
+    if (tokens.length === 0) {
+      return res.json({ success: true, message: 'No FCM tokens found. 0 pushes sent.', sent: 0 });
+    }
+
+    // FCM allows max 500 tokens per multicast — chunk if needed
+    const CHUNK = 500;
+    let totalSent = 0;
+    let totalFailed = 0;
+
+    for (let i = 0; i < tokens.length; i += CHUNK) {
+      const chunk = tokens.slice(i, i + CHUNK);
+      const message = {
+        tokens: chunk,
+        notification: {
+          title: `🎉 New Promotion: ${label}`,
+          body: `${title} — Get ${discount}% off! Tap to claim now.`,
+        },
+        data: {
+          type: 'promo',
+          discount: String(discount),
+          label: label,
+          title: title,
+        },
+        android: {
+          notification: {
+            channelId: 'gym_trainer_channel',
+            priority: 'high',
+            defaultSound: true,
+            defaultVibrateTimings: true,
+          },
+          priority: 'high',
+        },
+        apns: {
+          payload: {
+            aps: {
+              sound: 'default',
+              badge: 1,
+            },
+          },
+        },
+      };
+
+      const response = await admin.messaging().sendEachForMulticast(message);
+      totalSent += response.successCount;
+      totalFailed += response.failureCount;
+
+      console.log(`📱 FCM chunk ${Math.floor(i / CHUNK) + 1}: ${response.successCount} sent, ${response.failureCount} failed`);
+    }
+
+    console.log(`✅ FCM campaign push complete: ${totalSent} sent, ${totalFailed} failed`);
+    return res.json({
+      success: true,
+      message: `Push sent to ${totalSent} devices.`,
+      sent: totalSent,
+      failed: totalFailed,
+    });
+  } catch (error) {
+    console.error('❌ FCM push error:', error);
+    return handleError(res, error);
+  }
+});
+
 module.exports = router;
+

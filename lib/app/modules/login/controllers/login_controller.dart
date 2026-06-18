@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import '../../../routes/app_router.dart' show routerProvider, Routes;
 import '../../../providers/global_providers.dart';
+import '../../../services/notification_service.dart';
 
 class LoginState {
   final bool isLoading;
@@ -175,6 +176,9 @@ class LoginNotifier extends AutoDisposeNotifier<LoginState> {
       router.go(Routes.LOGIN);
       return;
     }
+
+    // Save FCM token so this device receives push notifications
+    NotificationService.instance.saveFcmToken();
 
     try {
       final roleService = ref.read(userRoleServiceProvider);

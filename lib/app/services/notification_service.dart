@@ -1,20 +1,31 @@
 import 'dart:convert';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:go_router/go_router.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 
 import '../routes/app_router.dart';
 import 'user_role_service.dart';
 
+// ─── Background FCM handler (top-level, required by FCM) ──────────────────────
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  // App is in background/terminated — FCM shows the notification automatically
+  // via the system tray. No extra work needed here unless you want data-only msgs.
+  debugPrint('📩 FCM background message: ${message.messageId}');
+}
+
 /// Central service for native device notifications + deep-link navigation.
-/// Works for all roles: user, trainer, admin.
+/// Handles both flutter_local_notifications (in-app) and FCM (push).
 class NotificationService {
   NotificationService._();
   static final NotificationService instance = NotificationService._();
 
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
+  final FirebaseMessaging _fcm = FirebaseMessaging.instance;
 
   static const _channelId = 'gym_trainer_channel';
   static const _channelName = 'Gym Trainer Notifications';
@@ -22,12 +33,27 @@ class NotificationService {
 
   bool _initialized = false;
 
+  // ─── Initialize ────────────────────────────────────────────────────────────
+
   /// Call once in main() before runApp.
   Future<void> initialize() async {
     if (_initialized) return;
     _initialized = true;
 
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    // 1. Register FCM background handler
+    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+
+    // 2. Request FCM permission
+    await _fcm.requestPermission(
+      alert: true,
+      badge: true,
+      sound: true,
+      provisional: false,
+    );
+
+    // 3. Init flutter_local_notifications (for foreground display)
+    const androidSettings =
+        AndroidInitializationSettings('@mipmap/ic_launcher');
     const iosSettings = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,
@@ -44,7 +70,7 @@ class NotificationService {
       onDidReceiveBackgroundNotificationResponse: _onBackgroundTap,
     );
 
-    // Create high-importance Android channel
+    // 4. Create high-importance Android channel
     const androidChannel = AndroidNotificationChannel(
       _channelId,
       _channelName,
@@ -59,22 +85,106 @@ class NotificationService {
             AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(androidChannel);
 
-    // Request permissions on iOS
+    // 5. Request permissions on iOS
     await _plugin
         .resolvePlatformSpecificImplementation<
             IOSFlutterLocalNotificationsPlugin>()
         ?.requestPermissions(alert: true, badge: true, sound: true);
 
-    // Request permissions on Android 13+ (API 33+)
+    // 6. Request permissions on Android 13+
     await _plugin
         .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>()
         ?.requestNotificationsPermission();
 
-    debugPrint('✅ NotificationService initialized');
+    // 7. FCM foreground messages → show as local notification
+    FirebaseMessaging.onMessage.listen(_handleForegroundMessage);
+
+    // 8. App opened from notification (background → foreground)
+    FirebaseMessaging.onMessageOpenedApp.listen(_handleNotificationOpenedApp);
+
+    // 9. App opened from terminated state via notification
+    final initial = await _fcm.getInitialMessage();
+    if (initial != null) {
+      // Slight delay so router is ready
+      await Future.delayed(const Duration(milliseconds: 800));
+      _handleNotificationOpenedApp(initial);
+    }
+
+    debugPrint('✅ NotificationService initialized (FCM + Local)');
   }
 
-  // ─── Show native OS notification ─────────────────────────────────────────
+  // ─── Save FCM token to Firestore ───────────────────────────────────────────
+
+  /// Call after user logs in to save their FCM token.
+  Future<void> saveFcmToken() async {
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return;
+
+      final token = await _fcm.getToken();
+      if (token == null) return;
+
+      await FirebaseFirestore.instance.collection('users').doc(uid).set(
+        {'fcmToken': token, 'fcmTokenUpdatedAt': FieldValue.serverTimestamp()},
+        SetOptions(merge: true),
+      );
+      debugPrint('✅ FCM token saved: ${token.substring(0, 20)}...');
+
+      // Listen for token refresh
+      _fcm.onTokenRefresh.listen((newToken) async {
+        final currentUid = FirebaseAuth.instance.currentUser?.uid;
+        if (currentUid == null) return;
+        await FirebaseFirestore.instance.collection('users').doc(currentUid).set(
+          {'fcmToken': newToken, 'fcmTokenUpdatedAt': FieldValue.serverTimestamp()},
+          SetOptions(merge: true),
+        );
+        debugPrint('🔄 FCM token refreshed');
+      });
+    } catch (e) {
+      debugPrint('⚠️ Failed to save FCM token: $e');
+    }
+  }
+
+  /// Remove FCM token when user logs out.
+  Future<void> clearFcmToken() async {
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return;
+      await FirebaseFirestore.instance.collection('users').doc(uid).set(
+        {'fcmToken': FieldValue.delete()},
+        SetOptions(merge: true),
+      );
+      await _fcm.deleteToken();
+      debugPrint('🗑️ FCM token cleared');
+    } catch (e) {
+      debugPrint('⚠️ Failed to clear FCM token: $e');
+    }
+  }
+
+  // ─── FCM foreground handler ────────────────────────────────────────────────
+
+  void _handleForegroundMessage(RemoteMessage message) {
+    final notif = message.notification;
+    final data = message.data;
+    final title = notif?.title ?? data['title'] ?? 'Gym Trainer';
+    final body = notif?.body ?? data['body'] ?? '';
+    final type = data['type'] ?? 'general';
+
+    showNotification(
+      title: title,
+      body: body,
+      routePayload: {'type': type, ...data},
+    );
+  }
+
+  void _handleNotificationOpenedApp(RemoteMessage message) {
+    final data = message.data;
+    final type = data['type'] ?? 'general';
+    navigateFromPayload({'type': type, ...data});
+  }
+
+  // ─── Show native OS notification ───────────────────────────────────────────
 
   int _notifId = 0;
 
@@ -105,13 +215,14 @@ class NotificationService {
         iOS: iosDetails,
       );
 
-      await _plugin.show(_notifId++, title, body, details, payload: payloadStr);
+      await _plugin.show(_notifId++, title, body, details,
+          payload: payloadStr);
     } catch (e) {
       debugPrint('❌ Error displaying native local notification: $e');
     }
   }
 
-  // ─── Navigation on tap ───────────────────────────────────────────────────
+  // ─── Navigation on tap ─────────────────────────────────────────────────────
 
   void _onTap(NotificationResponse response) {
     final payload = response.payload;
@@ -123,7 +234,6 @@ class NotificationService {
   }
 
   /// Navigate based on a decoded payload map.
-  /// Called both from device-notification taps and in-app banner taps.
   void navigateFromPayload(Map<String, dynamic> payload) async {
     final nav = rootNavigatorKey.currentContext;
     if (nav == null) return;
@@ -131,9 +241,12 @@ class NotificationService {
     final type = (payload['type'] ?? '').toString();
     final postId = payload['postId']?.toString() ?? '';
     final trainerName = payload['trainerName']?.toString() ?? 'Trainer';
-    final otherId = (payload['otherId'] ?? payload['senderId'] ?? '').toString();
-    final otherName = (payload['otherName'] ?? payload['senderName'] ?? '').toString();
-    final otherPhoto = (payload['otherPhoto'] ?? payload['senderPhotoUrl'] ?? '').toString();
+    final otherId =
+        (payload['otherId'] ?? payload['senderId'] ?? '').toString();
+    final otherName =
+        (payload['otherName'] ?? payload['senderName'] ?? '').toString();
+    final otherPhoto =
+        (payload['otherPhoto'] ?? payload['senderPhotoUrl'] ?? '').toString();
 
     final user = FirebaseAuth.instance.currentUser;
     String role = 'user';
@@ -148,12 +261,10 @@ class NotificationService {
       case 'comment':
         if (postId.isNotEmpty) {
           if (role == 'trainer') {
-            // Open trainer dashboard with auto-open post comments sheet
             GoRouter.of(nav).go(
               '${Routes.TRAINER_DASHBOARD}?postId=$postId&trainerName=${Uri.encodeComponent(trainerName)}',
             );
           } else {
-            // Open user home with auto-open post comments sheet
             GoRouter.of(nav).go(
               '${Routes.HOME}?postId=$postId&trainerName=${Uri.encodeComponent(trainerName)}',
             );
@@ -212,6 +323,7 @@ class NotificationService {
         break;
 
       case 'promo':
+        // Promo notification → go home to see/claim the banner
         GoRouter.of(nav).go(Routes.HOME);
         break;
 
