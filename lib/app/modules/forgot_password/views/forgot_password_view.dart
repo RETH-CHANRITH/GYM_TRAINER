@@ -52,15 +52,16 @@ class _ForgotPasswordViewState extends ConsumerState<ForgotPasswordView> {
       appBar: AppBar(
         elevation: 0,
         backgroundColor: Colors.transparent,
-        leading: state.currentStep == 0
-            ? IconButton(
-                icon: Icon(Icons.arrow_back, color: kSky),
-                onPressed: () => context.pop(),
-              )
-            : IconButton(
-                icon: Icon(Icons.arrow_back, color: kSky),
-                onPressed: () => notifier.goBack(context),
-              ),
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back, color: kSky),
+          onPressed: () {
+            if (state.currentStep == 0) {
+              context.pop();
+            } else {
+              notifier.goBack(context);
+            }
+          },
+        ),
         title: Text(
           'Reset Password',
           style: GoogleFonts.dmSans(
@@ -82,23 +83,28 @@ class _ForgotPasswordViewState extends ConsumerState<ForgotPasswordView> {
                       horizontal: 24,
                       vertical: 24,
                     ),
-                    child: AnimatedSwitcher(
+                    child: AnimatedSize(
                       duration: const Duration(milliseconds: 300),
-                      switchInCurve: Curves.easeInOut,
-                      switchOutCurve: Curves.easeInOut,
-                      transitionBuilder: (Widget child, Animation<double> animation) {
-                        return FadeTransition(
-                          opacity: animation,
-                          child: SlideTransition(
-                            position: Tween<Offset>(
-                              begin: const Offset(0.05, 0.0),
-                              end: Offset.zero,
-                            ).animate(animation),
-                            child: child,
-                          ),
-                        );
-                      },
-                      child: _buildStepContent(state, notifier),
+                      curve: Curves.easeInOut,
+                      alignment: Alignment.topCenter,
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 300),
+                        switchInCurve: Curves.easeInOut,
+                        switchOutCurve: Curves.easeInOut,
+                        transitionBuilder: (Widget child, Animation<double> animation) {
+                          return FadeTransition(
+                            opacity: animation,
+                            child: SlideTransition(
+                              position: Tween<Offset>(
+                                begin: const Offset(0.05, 0.0),
+                                end: Offset.zero,
+                              ).animate(animation),
+                              child: child,
+                            ),
+                          );
+                        },
+                        child: _buildStepContent(state, notifier),
+                      ),
                     ),
                   ),
                 ),
@@ -285,23 +291,28 @@ class _ForgotPasswordViewState extends ConsumerState<ForgotPasswordView> {
                 borderRadius: BorderRadius.circular(12),
               ),
             ),
-            child: state.isLoading
-                ? const SizedBox(
-                    height: 24,
-                    width: 24,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(kInk),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              child: state.isLoading
+                  ? const SizedBox(
+                      key: ValueKey('loading'),
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(kInk),
+                      ),
+                    )
+                  : Text(
+                      'Send Code',
+                      key: const ValueKey('label'),
+                      style: GoogleFonts.dmSans(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: kInk,
+                      ),
                     ),
-                  )
-                : Text(
-                    'Send Code',
-                    style: GoogleFonts.dmSans(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: kInk,
-                    ),
-                  ),
+            ),
           ),
         ),
         const SizedBox(height: 40),
@@ -384,23 +395,28 @@ class _ForgotPasswordViewState extends ConsumerState<ForgotPasswordView> {
                 borderRadius: BorderRadius.circular(12),
               ),
             ),
-            child: state.isLoading
-                ? const SizedBox(
-                    height: 24,
-                    width: 24,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(kInk),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              child: state.isLoading
+                  ? const SizedBox(
+                      key: ValueKey('loading'),
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(kInk),
+                      ),
+                    )
+                  : Text(
+                      'Verify Code',
+                      key: const ValueKey('label'),
+                      style: GoogleFonts.dmSans(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: kInk,
+                      ),
                     ),
-                  )
-                : Text(
-                    'Verify Code',
-                    style: GoogleFonts.dmSans(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: kInk,
-                    ),
-                  ),
+            ),
           ),
         ),
         const SizedBox(height: 40),
@@ -470,23 +486,28 @@ class _ForgotPasswordViewState extends ConsumerState<ForgotPasswordView> {
                 borderRadius: BorderRadius.circular(12),
               ),
             ),
-            child: state.isLoading
-                ? const SizedBox(
-                    height: 24,
-                    width: 24,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(kInk),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              child: state.isLoading
+                  ? const SizedBox(
+                      key: ValueKey('loading'),
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(kInk),
+                      ),
+                    )
+                  : Text(
+                      'Reset Password',
+                      key: const ValueKey('label'),
+                      style: GoogleFonts.dmSans(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: kInk,
+                      ),
                     ),
-                  )
-                : Text(
-                    'Reset Password',
-                    style: GoogleFonts.dmSans(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: kInk,
-                    ),
-                  ),
+            ),
           ),
         ),
         const SizedBox(height: 40),
