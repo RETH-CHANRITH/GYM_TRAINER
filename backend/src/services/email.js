@@ -144,7 +144,7 @@ class EmailService {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            from: 'Gym Trainer <onboarding@resend.dev>',
+            from: 'Gym Trainer <noreply@send.rithgym.com>',
             to: toEmail,
             subject: '🔑 Password Reset OTP Code - Gym Trainer',
             html: htmlContent,
