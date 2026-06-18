@@ -157,7 +157,10 @@ class EmailService {
           return resData;
         } else {
           console.error(`❌ Resend HTTP API error status ${response.status}:`, resData);
-          // Fall through to SMTP fallback if API fails
+          if (response.status === 403 || response.status === 400) {
+            throw new Error(`Email delivery rejected by Resend: ${resData.message || 'recipient address not allowed in sandbox mode'}`);
+          }
+          // Fall through to SMTP fallback if API fails for other transient reasons
         }
       } catch (err) {
         console.error('❌ Failed to connect/send via Resend HTTP API:', err.message);
