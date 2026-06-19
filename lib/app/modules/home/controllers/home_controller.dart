@@ -120,6 +120,7 @@ class HomeNotifier extends AutoDisposeNotifier<HomeState> {
 
   final Map<String, Map<String, dynamic>> _trainerUsersByUid = {};
   final Map<String, Map<String, dynamic>> _trainerProfilesByUid = {};
+  final Map<String, List<double>> _trainerRatings = {};
 
   @override
   HomeState build() {
@@ -293,6 +294,21 @@ class HomeNotifier extends AutoDisposeNotifier<HomeState> {
         _rebuildTrainerCatalog();
       }, onError: (_) {}),
     );
+
+    _subs.add(
+      _firestore.collection('reviews').snapshots().listen((snap) {
+        _trainerRatings.clear();
+        for (final doc in snap.docs) {
+          final data = doc.data();
+          final tId = (data['trainerId'] ?? '').toString().trim();
+          final rVal = (data['rating'] as num?)?.toDouble() ?? 0.0;
+          if (tId.isNotEmpty && rVal > 0) {
+            _trainerRatings.putIfAbsent(tId, () => []).add(rVal);
+          }
+        }
+        _rebuildTrainerCatalog();
+      }, onError: (_) {}),
+    );
   }
 
   void _listenTrainerPostsRealtime() {
@@ -441,8 +457,14 @@ class HomeNotifier extends AutoDisposeNotifier<HomeState> {
 
       final fallbackCategory = _inferCategory(specializations);
       final priceFromProfile = _toInt(profile['sessionPrice']);
-      final reviewCount = _toInt(user['reviewsCount']);
-      final rating = _toDouble(user['rating']);
+      
+      final ratingsList = _trainerRatings[uid] ?? [];
+      final computedAvg = ratingsList.isEmpty
+          ? 0.0
+          : ratingsList.reduce((a, b) => a + b) / ratingsList.length;
+
+      final reviewCount = ratingsList.isNotEmpty ? ratingsList.length : _toInt(user['reviewsCount']);
+      final rating = computedAvg > 0 ? computedAvg : _toDouble(user['rating']);
 
       catalog.add({
         'id': uid,

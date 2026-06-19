@@ -1169,7 +1169,8 @@ class _BookingsTabState extends State<_BookingsTab> {
   Widget _buildBookingCardTile(Map<String, dynamic> item, String clientName, String clientPhoto, String status, String userId) {
     final paid = item['paid'] == true;
     final amountPaid = (item['amountPaid'] as num?)?.toInt() ?? 0;
-    final paymentStatus = item['paymentStatus'] as String? ?? (paid ? 'fully_paid' : (amountPaid > 0 ? 'partially_paid' : 'unpaid'));
+    var paymentStatus = item['paymentStatus'] as String? ?? (paid ? 'fully_paid' : (amountPaid > 0 ? 'partially_paid' : 'unpaid'));
+    if (paymentStatus == 'completed') paymentStatus = 'fully_paid';
 
     final Color paymentColor;
     final String paymentText;
@@ -1709,13 +1710,77 @@ class _EarningsTab extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       children: [
-        Obx(
-          () => _PlainKpi(
-            title: 'Monthly Income',
-            value: '\$${controller.monthlyIncome.value.toStringAsFixed(2)}',
-            color: kSky,
-          ),
-        ),
+        // ── Income Summary Row ────────────────────────────────────────────
+        Obx(() => Row(
+          children: [
+            Expanded(
+              child: _PlainKpi(
+                title: 'This Month',
+                value: '\$${controller.monthlyIncome.value.toStringAsFixed(2)}',
+                color: kSky,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _PlainKpi(
+                title: 'Total Earned',
+                value: '\$${controller.totalIncome.value.toStringAsFixed(2)}',
+                color: kLilac,
+              ),
+            ),
+          ],
+        )),
+        const SizedBox(height: 10),
+        // ── Available Balance Card ─────────────────────────────────────────
+        Obx(() {
+          final balance = controller.availableBalance;
+          return LiquidTile(
+            radius: 16,
+            accent: kLilac,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Available Balance',
+                      style: GoogleFonts.dmSans(
+                        color: Colors.white70,
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '\$${balance.toStringAsFixed(2)}',
+                      style: GoogleFonts.dmSans(
+                        color: kLilac,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 26,
+                      ),
+                    ),
+                    Text(
+                      'Total earned minus requested payouts',
+                      style: GoogleFonts.dmSans(
+                        color: Colors.white38,
+                        fontSize: 10,
+                      ),
+                    ),
+                  ],
+                ),
+                if (balance > 0)
+                  _SmallActionButton(
+                    label: 'Request All',
+                    color: kLilac,
+                    onTap: () {
+                      controller.payoutAmountController.text =
+                          balance.toStringAsFixed(2);
+                    },
+                  ),
+              ],
+            ),
+          );
+        }),
         const SizedBox(height: 12),
         LiquidTile(
           radius: 16,
@@ -1730,6 +1795,14 @@ class _EarningsTab extends StatelessWidget {
                   fontWeight: FontWeight.w700,
                 ),
               ),
+              const SizedBox(height: 4),
+              Obx(() => Text(
+                'Enter amount to withdraw (max \$${controller.availableBalance.toStringAsFixed(2)})',
+                style: GoogleFonts.dmSans(
+                  color: Colors.white54,
+                  fontSize: 11,
+                ),
+              )),
               const SizedBox(height: 8),
               TextField(
                 controller: controller.payoutAmountController,
@@ -1752,6 +1825,7 @@ class _EarningsTab extends StatelessWidget {
             ],
           ),
         ),
+
         const SizedBox(height: 20),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -3776,12 +3850,19 @@ class _StatusChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final kNeon = Theme.of(context).colorScheme.primary;
     final normalized = status.toLowerCase();
-    final color =
-        normalized == 'confirmed' || normalized == 'paid'
-            ? kNeon
-            : (normalized == 'cancelled' || normalized == 'rejected'
-                ? kCoral
-                : kSky);
+
+    final Color color;
+    if (normalized == 'paid' || normalized == 'confirmed' || normalized == 'completed') {
+      color = kNeon; // green
+    } else if (normalized == 'approved') {
+      color = const Color(0xFFFFBB33); // amber/gold
+    } else if (normalized == 'requested' || normalized == 'pending') {
+      color = kSky; // sky blue
+    } else if (normalized == 'cancelled' || normalized == 'rejected') {
+      color = kCoral; // red
+    } else {
+      color = kMuted; // grey for unknown
+    }
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),

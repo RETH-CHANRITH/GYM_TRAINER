@@ -4,10 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../config/glass_ui.dart';
 import '../controllers/settings_controller.dart';
-import '../../../services/user_profile_service.dart';
 import '../../../routes/app_router.dart' show Routes;
 import '../../../providers/theme_provider.dart';
 import '../../../providers/appearance_provider.dart';
+import '../../../providers/global_providers.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 // ─── Design Tokens ──────────────────────────────────────────────────────────
 const Color neon = Color(0xFFCBFF47);
@@ -645,6 +647,9 @@ class SettingsView extends ConsumerWidget {
               _buildUserCard(context, ref),
               const SizedBox(height: 28),
 
+              // ── Trainer Registration ──────
+              _buildTrainerRegistrationSection(context, ref),
+
               // ── Preferences ───────────────
               _buildSectionHeader(context, 'Preferences'),
               const SizedBox(height: 10),
@@ -827,7 +832,6 @@ class SettingsView extends ConsumerWidget {
       ),
     );
   }
-
   Widget _buildUserCard(BuildContext context, WidgetRef ref) {
     final p = ref.watch(userProfileServiceProvider);
 
@@ -849,7 +853,7 @@ class SettingsView extends ConsumerWidget {
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Padding(
-                padding: const EdgeInsets.all(2), // border border-width
+                padding: const EdgeInsets.all(2),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(14),
                   child: PremiumAvatar(
@@ -1011,6 +1015,424 @@ class SettingsView extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+
+  String _formatDate(dynamic value) {
+    if (value == null) return 'N/A';
+    DateTime? dt;
+    if (value is Timestamp) {
+      dt = value.toDate();
+    } else if (value is DateTime) {
+      dt = value;
+    }
+    if (dt == null) return 'N/A';
+    final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return '${months[dt.month - 1]} ${dt.day}, ${dt.year}';
+  }
+
+  // ── Direct-submit trainer application (no form) ──────────────────────────────
+  Future<void> _submitTrainerApplication(BuildContext context, WidgetRef ref) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    final profile = ref.read(userProfileServiceProvider);
+
+    // Confirm dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Theme.of(context).brightness == Brightness.dark
+            ? const Color(0xFF1A1A28)
+            : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Text(
+          'Register as Trainer?',
+          style: TextStyle(
+            color: _text(context),
+            fontWeight: FontWeight.w800,
+            fontSize: 17,
+          ),
+        ),
+        content: Text(
+          'Your current profile information will be sent to the admin for review. You will be notified once approved.',
+          style: TextStyle(color: _muted(context), fontSize: 13, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancel', style: TextStyle(color: _muted(context))),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _neon(context),
+              foregroundColor: const Color(0xFF0A0A0F),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              elevation: 0,
+            ),
+            child: const Text('Submit', style: TextStyle(fontWeight: FontWeight.w800)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('trainerApplications')
+          .doc(user.uid)
+          .set({
+        'userId': user.uid,
+        'fullName': profile.name,
+        'email': profile.email,
+        'photoUrl': profile.photoUrl,
+        'specialty': '',
+        'yearsOfExperience': '0',
+        'hourlyRate': 0.0,
+        'certifications': '',
+        'bio': '',
+        'status': 'pending',
+        'submittedAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Application submitted! Waiting for admin review.'),
+            backgroundColor: _neon(context),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to submit: $e'),
+            backgroundColor: coral,
+          ),
+        );
+      }
+    }
+  }
+
+  Widget _buildTrainerRegistrationSection(BuildContext context, WidgetRef ref) {
+    final profile = ref.watch(userProfileServiceProvider);
+    final role = profile.role.toLowerCase().trim();
+    // Show for 'user' role, empty role, or any non-trainer/non-admin role
+    if (role == 'admin') return const SizedBox.shrink();
+
+    if (role == 'trainer') {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildSectionHeader(context, 'Become a Trainer'),
+          const SizedBox(height: 10),
+          LiquidTile(
+            radius: 16,
+            padding: const EdgeInsets.all(16),
+            accent: const Color(0xFFCBFF47),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFCBFF47).withOpacity(0.12),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.celebration_rounded,
+                        color: Color(0xFFCBFF47),
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Application Approved! 🎉',
+                            style: TextStyle(
+                              color: _text(context),
+                              fontWeight: FontWeight.w800,
+                              fontSize: 15,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'You are now a certified trainer.',
+                            style: TextStyle(
+                              color: _muted(context),
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Please sign out and sign back in to activate your trainer account and start setting up your profile.',
+                  style: TextStyle(
+                    color: _text(context).withOpacity(0.85),
+                    fontSize: 12,
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () => _showLogoutDialog(context, ref),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFCBFF47),
+                      foregroundColor: const Color(0xFF0A0A0F),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      elevation: 0,
+                    ),
+                    child: const Text(
+                      'Sign Out Now',
+                      style: TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+        ],
+      );
+    }
+
+    final appAsync = ref.watch(userTrainerApplicationProvider);
+
+    return appAsync.when(
+      data: (app) {
+        if (app == null) {
+          // ── No application yet: show Register button ──
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildSectionHeader(context, 'Become a Trainer'),
+              const SizedBox(height: 10),
+              GestureDetector(
+                onTap: () => _submitTrainerApplication(context, ref),
+                behavior: HitTestBehavior.opaque,
+                child: LiquidTile(
+                  radius: 16,
+                  padding: const EdgeInsets.all(16),
+                  accent: Theme.of(context).colorScheme.primary,
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.primary.withOpacity(0.12),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.fitness_center_rounded,
+                          color: Theme.of(context).colorScheme.primary,
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Register as Trainer',
+                              style: TextStyle(
+                                color: _text(context),
+                                fontWeight: FontWeight.w700,
+                                fontSize: 14,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Tap to apply — no extra info needed',
+                              style: TextStyle(
+                                color: _muted(context),
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(
+                        CupertinoIcons.chevron_right,
+                        color: _muted(context),
+                        size: 16,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
+          );
+        }
+
+        final status = (app['status'] ?? 'pending').toString().toLowerCase();
+
+        if (status == 'pending') {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildSectionHeader(context, 'Trainer Application'),
+              const SizedBox(height: 10),
+              LiquidTile(
+                radius: 16,
+                padding: const EdgeInsets.all(16),
+                accent: Colors.orange,
+                child: Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withOpacity(0.12),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.hourglass_empty_rounded,
+                        color: Colors.orange,
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Application Pending Review',
+                            style: TextStyle(
+                              color: _text(context),
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Submitted on ${_formatDate(app['submittedAt'])}',
+                            style: TextStyle(
+                              color: _muted(context),
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
+          );
+        }
+
+        if (status == 'rejected') {
+          final notes = app['rejectionNotes'] ?? 'No feedback provided';
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildSectionHeader(context, 'Trainer Application'),
+              const SizedBox(height: 10),
+              LiquidTile(
+                radius: 16,
+                padding: const EdgeInsets.all(16),
+                accent: Colors.red,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: Colors.red.withOpacity(0.12),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.error_outline_rounded,
+                            color: Colors.red,
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Application Rejected',
+                                style: TextStyle(
+                                  color: _text(context),
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Feedback: $notes',
+                                style: TextStyle(
+                                  color: _muted(context),
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    SizedBox(
+                      width: double.infinity,
+                      child: TextButton(
+                        onPressed: () => _submitTrainerApplication(context, ref),
+                        style: TextButton.styleFrom(
+                          backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        child: Text(
+                          'Re-apply',
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.primary,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
+          );
+        }
+
+        return const SizedBox.shrink();
+      },
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
     );
   }
 }

@@ -3,6 +3,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../../../../config/glass_ui.dart';
 import '../controllers/trainer_details_controller.dart';
 import '../controllers/trainer_rating_controller.dart';
@@ -113,35 +114,7 @@ class TrainerDetailsView extends ConsumerWidget {
     double rating,
     int reviewCount,
   ) {
-    var portraitIdx = state.portrait;
-    if (portraitIdx == 10 || portraitIdx == 32) {
-      final seedStr = state.trainerName.isNotEmpty ? state.trainerName : state.trainerId;
-      if (seedStr.isNotEmpty) {
-        portraitIdx = seedStr.hashCode.abs() % 90 + 10;
-      }
-    }
-
-    final nameLower = state.trainerName.toLowerCase();
-    String gender = 'men';
-    if (nameLower.contains('kaiya') ||
-        nameLower.contains('kaya') ||
-        nameLower.contains('lisa') ||
-        nameLower.contains('sara') ||
-        nameLower.contains('anna') ||
-        nameLower.contains('maria') ||
-        nameLower.contains('emma') ||
-        nameLower.contains('sofia') ||
-        nameLower.contains('julia') ||
-        nameLower.contains('lucy') ||
-        nameLower.contains('charlotte')) {
-      gender = 'women';
-    } else {
-      gender = portraitIdx % 2 == 0 ? 'men' : 'women';
-    }
-
-    final heroUrl = state.imageUrl.isNotEmpty
-        ? state.imageUrl
-        : 'https://randomuser.me/api/portraits/$gender/$portraitIdx.jpg';
+    final hasCustomImage = state.imageUrl.isNotEmpty;
 
     final favourites = ref.watch(favouritesServiceProvider);
     final favNotifier = ref.read(favouritesServiceProvider.notifier);
@@ -165,14 +138,16 @@ class TrainerDetailsView extends ConsumerWidget {
         SizedBox(
           height: 320,
           width: double.infinity,
-          child: CachedNetworkImage(
-            imageUrl: heroUrl,
-            fit: BoxFit.cover,
-            memCacheWidth: 1080,
-            memCacheHeight: 640,
-            fadeInDuration: const Duration(milliseconds: 140),
-            errorWidget: (_, __, ___) => _heroFallback(context),
-          ),
+          child: hasCustomImage
+              ? CachedNetworkImage(
+                  imageUrl: state.imageUrl,
+                  fit: BoxFit.cover,
+                  memCacheWidth: 1080,
+                  memCacheHeight: 640,
+                  fadeInDuration: const Duration(milliseconds: 140),
+                  errorWidget: (_, __, ___) => _heroFallback(context, name),
+                )
+              : _heroFallback(context, name),
         ),
         Positioned.fill(
           child: DecoratedBox(
@@ -318,12 +293,48 @@ class TrainerDetailsView extends ConsumerWidget {
     );
   }
 
-  Widget _heroFallback(BuildContext context) => Container(
-        color: _raised(context),
-        child: Center(
-          child: Icon(CupertinoIcons.person_fill, color: _muted(context), size: 80),
+  Widget _heroFallback(BuildContext context, String name) {
+    final initials = name.trim().isEmpty
+        ? 'T'
+        : name.trim().split(RegExp(r'\s+')).take(2).map((s) => s[0]).join().toUpperCase();
+    final hash = name.hashCode.abs();
+    final gradients = [
+      [const Color(0xFF896CFE), const Color(0xFF5CE8FF)], // Purple to Sky
+      [const Color(0xFFFF5C5C), const Color(0xFFF59E0B)], // Coral to Orange
+      [const Color(0xFF10B981), const Color(0xFF3B82F6)], // Emerald to Blue
+      [const Color(0xFFEC4899), const Color(0xFF8B5CF6)], // Pink to Violet
+    ];
+    final selectedGradient = gradients[hash % gradients.length];
+
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: selectedGradient,
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
-      );
+      ),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: Colors.black.withOpacity(0.2),
+            border: Border.all(color: Colors.white.withOpacity(0.3), width: 2),
+          ),
+          child: Text(
+            initials,
+            style: GoogleFonts.dmSans(
+              color: Colors.white,
+              fontSize: 54,
+              fontWeight: FontWeight.bold,
+              letterSpacing: -1,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
   Widget _buildStatsRow(BuildContext context, int age, double height, double rating, int reviews) {
     return Row(

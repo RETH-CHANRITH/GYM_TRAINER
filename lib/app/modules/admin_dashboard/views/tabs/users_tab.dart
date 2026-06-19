@@ -107,72 +107,79 @@ class UsersTab extends ConsumerWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
-              AdminActionButton(
-                label: 'Search Users',
-                icon: Icons.search_rounded,
-                onPressed: () => controller.searchUsers(),
-                width: double.infinity,
-              ),
             ],
           ),
         ),
         // ─── List ───────────────────────────────────────────────────────────
         Expanded(
-          child: Obx(() {
-            if (controller.loadingUsers.value) {
-              return Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
+          child: RefreshIndicator(
+            onRefresh: () => Future<void>.delayed(const Duration(milliseconds: 800)),
+            child: Obx(() {
+              if (controller.loadingUsers.value) {
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      CircularProgressIndicator(color: accent),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Loading users...',
+                        style: GoogleFonts.dmSans(fontSize: 13, color: kMuted),
+                      ),
+                    ],
+                  ),
+                );
+              }
+
+              final allUsers = controller.users;
+              final selectedStatus = controller.filterUsersStatus.value.toLowerCase();
+              final query = controller.searchUsersQuery.value.trim().toLowerCase();
+
+              // 1. Filter by Status
+              var filtered = allUsers.where((u) {
+                final status = (u['accountStatus'] ?? 'active').toString().toLowerCase();
+                return status == selectedStatus;
+              }).toList();
+
+              // 2. Filter by Search Query (Name or Email)
+              if (query.isNotEmpty) {
+                filtered = filtered.where((u) {
+                  final name = (u['name'] ?? '').toString().toLowerCase();
+                  final email = (u['email'] ?? '').toString().toLowerCase();
+                  return name.contains(query) || email.contains(query);
+                }).toList();
+              }
+
+              if (filtered.isEmpty) {
+                return ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
                   children: [
-                    CircularProgressIndicator(color: accent),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Loading users...',
-                      style: GoogleFonts.dmSans(fontSize: 13, color: kMuted),
+                    SizedBox(
+                      height: MediaQuery.of(context).size.height * 0.5,
+                      child: Center(
+                        child: EmptyStateWidget(
+                          title: 'No Users Found',
+                          message: 'No users match your search criteria',
+                          icon: Icons.person_off_rounded,
+                        ),
+                      ),
                     ),
                   ],
-                ),
+                );
+              }
+
+              return ListView.separated(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                itemCount: filtered.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 8),
+                itemBuilder: (context, index) {
+                  final user = filtered[index];
+                  return _buildUserCard(context, controller, user);
+                },
               );
-            }
-
-            final allUsers = controller.users;
-            final selectedStatus = controller.filterUsersStatus.value.toLowerCase();
-            final query = controller.searchUsersQuery.value.trim().toLowerCase();
-
-            // 1. Filter by Status
-            var filtered = allUsers.where((u) {
-              final status = (u['accountStatus'] ?? 'active').toString().toLowerCase();
-              return status == selectedStatus;
-            }).toList();
-
-            // 2. Filter by Search Query (Name or Email)
-            if (query.isNotEmpty) {
-              filtered = filtered.where((u) {
-                final name = (u['name'] ?? '').toString().toLowerCase();
-                final email = (u['email'] ?? '').toString().toLowerCase();
-                return name.contains(query) || email.contains(query);
-              }).toList();
-            }
-
-            if (filtered.isEmpty) {
-              return EmptyStateWidget(
-                title: 'No Users Found',
-                message: 'No users match your search criteria',
-                icon: Icons.person_off_rounded,
-              );
-            }
-
-            return ListView.separated(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              itemCount: filtered.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 8),
-              itemBuilder: (context, index) {
-                final user = filtered[index];
-                return _buildUserCard(context, controller, user);
-              },
-            );
-          }),
+            }),
+          ),
         ),
       ],
     );

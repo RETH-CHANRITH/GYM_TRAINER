@@ -17,6 +17,7 @@ class UserProfileState {
   final String fitnessGoal;
   final String activityLevel;
   final String fitnessLevel;
+  final String role;
 
   UserProfileState({
     required this.name,
@@ -30,6 +31,7 @@ class UserProfileState {
     required this.fitnessGoal,
     required this.activityLevel,
     required this.fitnessLevel,
+    required this.role,
   });
 
   UserProfileState copyWith({
@@ -44,6 +46,7 @@ class UserProfileState {
     String? fitnessGoal,
     String? activityLevel,
     String? fitnessLevel,
+    String? role,
   }) {
     return UserProfileState(
       name: name ?? this.name,
@@ -57,6 +60,7 @@ class UserProfileState {
       fitnessGoal: fitnessGoal ?? this.fitnessGoal,
       activityLevel: activityLevel ?? this.activityLevel,
       fitnessLevel: fitnessLevel ?? this.fitnessLevel,
+      role: role ?? this.role,
     );
   }
 }
@@ -90,6 +94,7 @@ class UserProfileNotifier extends Notifier<UserProfileState> {
       fitnessGoal: 'Muscle Gain',
       activityLevel: 'Moderately Active',
       fitnessLevel: 'Intermediate',
+      role: 'user',
     );
 
     final currentUser = _auth.currentUser;
@@ -148,6 +153,7 @@ class UserProfileNotifier extends Notifier<UserProfileState> {
           activityLevel: _str(d['activityLevel']) ?? state.activityLevel,
           fitnessLevel: _str(d['fitnessLevel']) ?? state.fitnessLevel,
           photoUrl: _str(d['photoUrl']) ?? state.photoUrl,
+          role: _str(d['role']) ?? state.role,
         );
       },
       onError: (_) {

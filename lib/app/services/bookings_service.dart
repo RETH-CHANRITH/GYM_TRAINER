@@ -116,10 +116,14 @@ class BookingsNotifier extends Notifier<BookingsState> {
 
       final isPaid = booking['paid'] == true ||
                      booking['paymentStatus'] == 'fully_paid' ||
-                     booking['paymentStatus'] == 'partially_paid';
+                     booking['paymentStatus'] == 'partially_paid' ||
+                     booking['paymentStatus'] == 'completed';
 
       double amountPaid = (booking['amountPaid'] as num?)?.toDouble() ?? 0.0;
       if (amountPaid == 0.0) {
+        amountPaid = (booking['paymentAmount'] as num?)?.toDouble() ?? 0.0;
+      }
+      if (amountPaid == 0.0 && isPaid) {
         amountPaid = (booking['price'] as num?)?.toDouble() ?? 0.0;
       }
       final userId = booking['userId']?.toString() ?? '';

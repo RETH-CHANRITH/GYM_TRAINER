@@ -470,6 +470,8 @@ class _BookSessionViewState extends ConsumerState<BookSessionView> {
     );
   }
 
+
+
   Widget _buildEndTimeSlots(BookSessionState state, BookSessionNotifier controller) {
     final endTimes = controller.getAvailableEndTimes();
     if (endTimes.isEmpty) {
@@ -607,7 +609,7 @@ class _BookSessionViewState extends ConsumerState<BookSessionView> {
     final date = state.selectedDate;
     final slot = state.selectedSlot;
     final ready = controller.canConfirm;
-    final totalPrice = state.price * controller.sessionDurationHours;
+    final totalPrice = state.price;
     
     final effectiveDiscount = state.promoDiscount > 0 ? state.promoDiscount : state.clientDiscount;
     final discountAmount = totalPrice * (effectiveDiscount / 100);

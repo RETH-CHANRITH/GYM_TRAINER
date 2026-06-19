@@ -596,7 +596,8 @@ class _HomeViewState extends ConsumerState<HomeView> {
     final paid = booking['paid'] == true;
     final amountPaid = (booking['amountPaid'] as num?)?.toInt() ?? 0;
     final price = (booking['price'] as num?)?.toInt() ?? 0;
-    final paymentStatus = booking['paymentStatus'] as String? ?? (paid ? 'fully_paid' : (amountPaid > 0 ? 'partially_paid' : 'unpaid'));
+    var paymentStatus = booking['paymentStatus'] as String? ?? (paid ? 'fully_paid' : (amountPaid > 0 ? 'partially_paid' : 'unpaid'));
+    if (paymentStatus == 'completed') paymentStatus = 'fully_paid';
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final String paymentLabelText;
@@ -1070,19 +1071,43 @@ class _HomeViewState extends ConsumerState<HomeView> {
   }
 
   Widget _buildFallbackWidget(String name) {
-    final fallbackUrl = getTrainerFallbackImageUrl(name);
+    final initials = name.trim().isEmpty
+        ? 'T'
+        : name.trim().split(RegExp(r'\s+')).take(2).map((s) => s[0]).join().toUpperCase();
+    final hash = name.hashCode.abs();
+    final gradients = [
+      [const Color(0xFF896CFE), const Color(0xFF5CE8FF)], // Purple to Sky
+      [const Color(0xFFFF5C5C), const Color(0xFFF59E0B)], // Coral to Orange
+      [const Color(0xFF10B981), const Color(0xFF3B82F6)], // Emerald to Blue
+      [const Color(0xFFEC4899), const Color(0xFF8B5CF6)], // Pink to Violet
+    ];
+    final selectedGradient = gradients[hash % gradients.length];
 
-    return CachedNetworkImage(
-      imageUrl: fallbackUrl,
-      fit: BoxFit.cover,
-      memCacheWidth: 320,
-      memCacheHeight: 208,
-      fadeInDuration: const Duration(milliseconds: 120),
-      errorWidget: (_, __, ___) => Center(
-        child: Icon(
-          CupertinoIcons.person_fill,
-          color: muted,
-          size: 36,
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: selectedGradient,
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: Colors.black.withOpacity(0.2),
+            border: Border.all(color: Colors.white.withOpacity(0.25), width: 1.5),
+          ),
+          child: Text(
+            initials,
+            style: GoogleFonts.dmSans(
+              color: Colors.white,
+              fontSize: 32,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.5,
+            ),
+          ),
         ),
       ),
     );

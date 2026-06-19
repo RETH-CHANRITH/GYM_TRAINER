@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -6,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'app/routes/app_router.dart';
+import 'app/providers/global_providers.dart';
 import 'app/providers/rx_compat.dart';
 import 'package:flutter/cupertino.dart';
 import 'app/modules/notifications/controllers/notifications_controller.dart';
@@ -135,6 +137,112 @@ class MyApp extends ConsumerWidget {
     }
   }
 
+  static void _showTrainerApprovedDialog(BuildContext context, WidgetRef ref) {
+    final router = ref.read(routerProvider);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Container(
+          padding: const EdgeInsets.all(28),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFF1A0F2E), Color(0xFF0D1B3E)],
+            ),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: const Color(0xFFCBFF47).withOpacity(0.35),
+              width: 1.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFFCBFF47).withOpacity(0.15),
+                blurRadius: 40,
+                spreadRadius: 2,
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Trophy icon with glow
+              Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFCBFF47).withOpacity(0.12),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFCBFF47).withOpacity(0.3),
+                      blurRadius: 24,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.workspace_premium_rounded,
+                  color: Color(0xFFCBFF47),
+                  size: 36,
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                '🎉 Congratulations!',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.dmSans(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 22,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Your trainer application has been approved! Sign in again to start your trainer journey.',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.dmSans(
+                  color: Colors.white.withOpacity(0.75),
+                  fontSize: 14,
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () async {
+                    Navigator.of(dialogCtx).pop();
+                    await FirebaseAuth.instance.signOut();
+                    router.go(Routes.LOGIN);
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFCBFF47),
+                    foregroundColor: const Color(0xFF0A0A0F),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: Text(
+                    'Sign In as Trainer',
+                    style: GoogleFonts.dmSans(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 15,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(routerProvider);
@@ -146,6 +254,18 @@ class MyApp extends ConsumerWidget {
       next.whenData((event) {
         _showGlobalNotifBanner(context, event);
       });
+    });
+
+    // ── Trainer approval listener ─────────────────────────────────────────────
+    // When the admin approves a pending trainer application, detect the
+    // pending → approved transition and force a re-login so the user
+    // comes back through the trainer onboarding flow.
+    ref.listen<AsyncValue<Map<String, dynamic>?>>(userTrainerApplicationProvider, (prev, next) {
+      final prevStatus = prev?.asData?.value?['status']?.toString().toLowerCase();
+      final nextStatus = next.asData?.value?['status']?.toString().toLowerCase();
+      if (prevStatus == 'pending' && nextStatus == 'approved') {
+        _showTrainerApprovedDialog(context, ref);
+      }
     });
 
     return MaterialApp.router(

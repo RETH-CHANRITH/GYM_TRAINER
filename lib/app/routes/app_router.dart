@@ -39,6 +39,7 @@ import '../modules/admin_dashboard/views/admin_dashboard_view.dart';
 import '../modules/streak_details/views/streak_details_view.dart';
 import '../modules/goals_details/views/goals_details_view.dart';
 import '../modules/trainer_onboarding/views/trainer_onboarding_view.dart';
+import '../modules/settings/views/trainer_application_form_view.dart';
 
 abstract class Routes {
   static const SPLASH = '/splash';
@@ -76,6 +77,7 @@ abstract class Routes {
   static const TRAINER_DASHBOARD = '/trainer-dashboard';
   static const TRAINER_AVAILABILITY = '/trainer-availability';
   static const TRAINER_ONBOARDING = '/trainer-onboarding';
+  static const TRAINER_APPLICATION = '/trainer-application';
   static const ADMIN_DASHBOARD = '/admin-dashboard';
   static const STREAK_DETAILS = '/streak-details';
   static const GOALS_DETAILS = '/goals-details';
@@ -251,6 +253,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: Routes.TRAINER_ONBOARDING,
         builder: (context, state) => const TrainerOnboardingView(),
+      ),
+      GoRoute(
+        path: Routes.TRAINER_APPLICATION,
+        builder: (context, state) => const TrainerApplicationFormView(),
       ),
       GoRoute(
         path: Routes.ADMIN_DASHBOARD,

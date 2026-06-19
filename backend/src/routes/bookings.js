@@ -308,7 +308,9 @@ router.post('/:bookingId/payment', verifyToken, async (req, res) => {
     }
 
     const updated = await DatabaseService.updateDoc('bookings', req.params.bookingId, {
-      paymentStatus: 'completed',
+      paymentStatus: 'fully_paid',
+      paid: true,
+      amountPaid: parseFloat(amount || booking.price),
       paymentMethod,
       transactionId,
       paymentAmount: parseFloat(amount || booking.price)

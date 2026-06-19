@@ -45,50 +45,48 @@ class BookingsTab extends ConsumerWidget {
 
   Widget _buildSessionsTab(BuildContext context, AdminDashboardController controller) {
     final accent = Theme.of(context).colorScheme.primary;
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
+    return RefreshIndicator(
+      onRefresh: () => Future.wait([
+        controller.loadBookings(),
+        Future.delayed(const Duration(milliseconds: 800)),
+      ]),
+      child: Obx(() {
+        if (controller.loadingBookings.value) {
+          return Center(child: CircularProgressIndicator(color: accent));
+        }
+
+        if (controller.bookings.isEmpty) {
+          return ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
             children: [
-              AdminActionButton(
-                label: 'Refresh Bookings',
-                icon: Icons.refresh_rounded,
-                onPressed: () => controller.loadBookings(),
-                width: double.infinity,
-              ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: Obx(() {
-            if (controller.loadingBookings.value) {
-              return Center(child: CircularProgressIndicator(color: accent));
-            }
-
-            if (controller.bookings.isEmpty) {
-              return EmptyStateWidget(
-                title: 'No Bookings',
-                message: 'No bookings to display',
-                icon: Icons.calendar_today_rounded,
-              );
-            }
-
-            return ListView.separated(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              itemCount: controller.bookings.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 8),
-              itemBuilder: (context, index) => Builder(
-                builder: (context) => _buildBookingCard(
-                  context,
-                  controller,
-                  controller.bookings[index],
+              SizedBox(
+                height: MediaQuery.of(context).size.height * 0.6,
+                child: Center(
+                  child: EmptyStateWidget(
+                    title: 'No Bookings',
+                    message: 'No bookings to display',
+                    icon: Icons.calendar_today_rounded,
+                  ),
                 ),
               ),
-            );
-          }),
-        ),
-      ],
+            ],
+          );
+        }
+
+        return ListView.separated(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          itemCount: controller.bookings.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 8),
+          itemBuilder: (context, index) => Builder(
+            builder: (context) => _buildBookingCard(
+              context,
+              controller,
+              controller.bookings[index],
+            ),
+          ),
+        );
+      }),
     );
   }
 
@@ -321,28 +319,42 @@ class BookingsTab extends ConsumerWidget {
   }
 
   Widget _buildPayoutsTab(BuildContext context, AdminDashboardController controller) {
-    return Obx(() {
-      if (controller.loadingFinance.value) {
-        return Center(child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary));
-      }
+    return RefreshIndicator(
+      onRefresh: () => Future<void>.delayed(const Duration(milliseconds: 800)),
+      child: Obx(() {
+        if (controller.loadingFinance.value) {
+          return Center(child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary));
+        }
 
-      if (controller.payouts.isEmpty) {
-        return EmptyStateWidget(
-          title: 'No Payouts',
-          message: 'No payout requests',
-          icon: Icons.account_balance_rounded,
-        );
-      }
+        if (controller.payouts.isEmpty) {
+          return ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            children: [
+              SizedBox(
+                height: MediaQuery.of(context).size.height * 0.6,
+                child: Center(
+                  child: EmptyStateWidget(
+                    title: 'No Payouts',
+                    message: 'No payout requests',
+                    icon: Icons.account_balance_rounded,
+                  ),
+                ),
+              ),
+            ],
+          );
+        }
 
-      return ListView.separated(
-        padding: const EdgeInsets.all(16),
-        itemCount: controller.payouts.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 8),
-        itemBuilder: (context, index) {
+        return ListView.separated(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(16),
+          itemCount: controller.payouts.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 8),
+          itemBuilder: (context, index) {
           final payout = controller.payouts[index];
           final status = payout['status'] as String? ?? 'pending';
           final amount = payout['amount'] as num? ?? 0;
           final trainerId = payout['trainerId']?.toString() ?? '';
+          final requestedAt = _formatScheduledAt(payout['requestedAt']);
 
           // Look up trainer details dynamically from users list
           final trainerUser = controller.users.firstWhere(
@@ -381,6 +393,15 @@ class BookingsTab extends ConsumerWidget {
                         ),
                         Text(
                           'Trainer ID: $trainerId',
+                          style: GoogleFonts.dmSans(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w400,
+                            color: kMuted,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Requested: $requestedAt',
                           style: GoogleFonts.dmSans(
                             fontSize: 10,
                             fontWeight: FontWeight.w400,
@@ -440,28 +461,42 @@ class BookingsTab extends ConsumerWidget {
           );
         },
       );
-    });
-  }
+    }),
+  );
+}
 
   Widget _buildRefundsTab(BuildContext context, AdminDashboardController controller) {
-    return Obx(() {
-      if (controller.loadingFinance.value) {
-        return Center(child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary));
-      }
+    return RefreshIndicator(
+      onRefresh: () => Future<void>.delayed(const Duration(milliseconds: 800)),
+      child: Obx(() {
+        if (controller.loadingFinance.value) {
+          return Center(child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary));
+        }
 
-      if (controller.refunds.isEmpty) {
-        return EmptyStateWidget(
-          title: 'No Refunds',
-          message: 'No refund requests',
-          icon: Icons.money_off_rounded,
-        );
-      }
+        if (controller.refunds.isEmpty) {
+          return ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            children: [
+              SizedBox(
+                height: MediaQuery.of(context).size.height * 0.6,
+                child: Center(
+                  child: EmptyStateWidget(
+                    title: 'No Refunds',
+                    message: 'No refund requests',
+                    icon: Icons.money_off_rounded,
+                  ),
+                ),
+              ),
+            ],
+          );
+        }
 
-      return ListView.separated(
-        padding: const EdgeInsets.all(16),
-        itemCount: controller.refunds.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 8),
-        itemBuilder: (context, index) {
+        return ListView.separated(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(16),
+          itemCount: controller.refunds.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 8),
+          itemBuilder: (context, index) {
           final refund = controller.refunds[index];
           final status = refund['status'] as String? ?? 'pending';
           final amount = refund['amount'] as num? ?? 0;
@@ -559,8 +594,9 @@ class BookingsTab extends ConsumerWidget {
           );
         },
       );
-    });
-  }
+    }),
+  );
+}
 
   String _formatScheduledAt(dynamic raw) {
     if (raw == null) return 'N/A';

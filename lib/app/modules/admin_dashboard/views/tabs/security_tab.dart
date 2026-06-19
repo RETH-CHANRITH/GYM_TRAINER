@@ -12,38 +12,40 @@ class SecurityTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final controller = ref.watch(adminDashboardProvider);
 
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: AdminActionButton(
-            label: 'Refresh Audit Logs',
-            icon: Icons.refresh_rounded,
-            onPressed: () => controller.loadAuditLogs(),
-            width: double.infinity,
-          ),
-        ),
-        Expanded(
-          child: Obx(() {
-            if (controller.auditLogs.isEmpty) {
-              return EmptyStateWidget(
-                title: 'No Audit Logs',
-                message: 'No administrative actions recorded yet',
-                icon: Icons.history_rounded,
-              );
-            }
+    return RefreshIndicator(
+      onRefresh: () => Future.wait([
+        controller.loadAuditLogs(),
+        Future.delayed(const Duration(milliseconds: 800)),
+      ]),
+      child: Obx(() {
+        if (controller.auditLogs.isEmpty) {
+          return ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            children: [
+              SizedBox(
+                height: MediaQuery.of(context).size.height * 0.7,
+                child: Center(
+                  child: EmptyStateWidget(
+                    title: 'No Audit Logs',
+                    message: 'No administrative actions recorded yet',
+                    icon: Icons.history_rounded,
+                  ),
+                ),
+              ),
+            ],
+          );
+        }
 
-            return ListView.separated(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              itemCount: controller.auditLogs.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 8),
-              itemBuilder:
-                  (context, index) =>
-                      _buildAuditLogCard(context, controller.auditLogs[index]),
-            );
-          }),
-        ),
-      ],
+        return ListView.separated(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          itemCount: controller.auditLogs.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 8),
+          itemBuilder:
+              (context, index) =>
+                  _buildAuditLogCard(context, controller.auditLogs[index]),
+        );
+      }),
     );
   }
 

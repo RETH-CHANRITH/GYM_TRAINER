@@ -28,10 +28,12 @@ class TrainerDashboardController extends ChangeNotifier {
     bookings.addListener(notifyListeners);
     reviews.addListener(notifyListeners);
     payouts.addListener(notifyListeners);
+    refunds.addListener(notifyListeners);
     posts.addListener(notifyListeners);
     pendingBookingsCount.addListener(notifyListeners);
     todaySessionsCount.addListener(notifyListeners);
     monthlyIncome.addListener(notifyListeners);
+    totalIncome.addListener(notifyListeners);
     avgRating.addListener(notifyListeners);
     totalReviews.addListener(notifyListeners);
     isUploadingPostImage.addListener(notifyListeners);
@@ -62,14 +64,29 @@ class TrainerDashboardController extends ChangeNotifier {
   final bookings = <Map<String, dynamic>>[].obs;
   final reviews = <Map<String, dynamic>>[].obs;
   final payouts = <Map<String, dynamic>>[].obs;
+  final refunds = <Map<String, dynamic>>[].obs;
   final posts = <Map<String, dynamic>>[].obs;
   final promotions = <Map<String, dynamic>>[].obs;
 
   final pendingBookingsCount = 0.obs;
   final todaySessionsCount = 0.obs;
   final monthlyIncome = 0.0.obs;
+  final totalIncome = 0.0.obs;
   final avgRating = 0.0.obs;
   final totalReviews = 0.obs;
+
+  /// Money received so far minus already-requested/paid payouts
+  double get availableBalance {
+    final alreadyPaidOut = payouts.fold(0.0, (acc, p) {
+      final status = (p['status'] ?? '').toString().toLowerCase();
+      // Count requested, approved, and paid payouts as deducted
+      if (status == 'requested' || status == 'approved' || status == 'paid') {
+        return acc + _toDouble(p['amount']);
+      }
+      return acc;
+    });
+    return (totalIncome.value - alreadyPaidOut).clamp(0.0, double.infinity);
+  }
 
   final displayNameController = TextEditingController();
   final sessionPriceController = TextEditingController();
@@ -340,9 +357,19 @@ class TrainerDashboardController extends ChangeNotifier {
       return;
     }
 
+    final balance = availableBalance;
+    if (amount > balance + 0.01) {
+      showSnackbar(
+        'Amount too high',
+        'You can only request up to \$${balance.toStringAsFixed(2)}.',
+      );
+      return;
+    }
+
     try {
       await _firestore.collection('payouts').add({
         'trainerId': uid,
+        'trainerName': displayName.value,
         'amount': amount,
         'status': 'requested',
         'requestedAt': FieldValue.serverTimestamp(),
@@ -350,12 +377,13 @@ class TrainerDashboardController extends ChangeNotifier {
       payoutAmountController.clear();
       showSnackbar(
         'Payout requested',
-        'Your withdrawal request was submitted.',
+        'Your withdrawal request for \$${amount.toStringAsFixed(2)} was submitted.',
       );
     } catch (_) {
       showSnackbar('Request failed', 'Could not submit payout request.');
     }
   }
+
 
   Future<void> logout() async {
     await FirebaseAuth.instance.signOut();
@@ -724,6 +752,19 @@ class TrainerDashboardController extends ChangeNotifier {
           .snapshots()
           .listen((snap) {
             payouts.assignAll(snap.docs.map((d) => {'id': d.id, ...d.data()}));
+            _recomputeBookingKpis();
+          }, onError: (_) {}),
+    );
+
+    _subs.add(
+      _firestore
+          .collection('refunds')
+          .where('trainerId', isEqualTo: uid)
+          .limit(100)
+          .snapshots()
+          .listen((snap) {
+            refunds.assignAll(snap.docs.map((d) => {'id': d.id, ...d.data()}));
+            _recomputeBookingKpis();
           }, onError: (_) {}),
     );
 
@@ -779,38 +820,62 @@ class TrainerDashboardController extends ChangeNotifier {
         }).length;
 
     final startOfMonth = DateTime(now.year, now.month, 1);
-    monthlyIncome.value = bookings.fold(0.0, (runningTotal, booking) {
+
+    // Compute all-time total income (money actually received from clients)
+    double allTimeIncome = 0.0;
+    double currentMonthIncome = 0.0;
+
+    for (final booking in bookings) {
       final status = (booking['status'] ?? '').toString().toLowerCase();
-      if (status == 'cancelled' || status == 'rejected') {
-        return runningTotal;
-      }
+      // Skip rejected bookings — no payment was ever made for these
+      if (status == 'rejected') continue;
 
       final paymentStatus = (booking['paymentStatus'] ?? '').toString().toLowerCase();
       final isPaid = booking['paid'] == true ||
                      paymentStatus == 'fully_paid' ||
                      paymentStatus == 'partially_paid' ||
+                     paymentStatus == 'completed' ||
                      (paymentStatus.isEmpty && status == 'completed');
 
-      if (!isPaid) {
-        return runningTotal;
-      }
+      if (!isPaid) continue;
 
+      // For cancelled bookings with payments, the money was still received.
+      // Refunds are tracked separately in the 'refunds' collection.
       double amount = _toDouble(booking['amountPaid']);
       if (amount <= 0) {
-        if (booking['paid'] == true || (paymentStatus.isEmpty && status == 'completed')) {
+        amount = _toDouble(booking['paymentAmount']);
+      }
+      if (amount <= 0) {
+        if (booking['paid'] == true || paymentStatus == 'completed' ||
+            paymentStatus == 'fully_paid' ||
+            (paymentStatus.isEmpty && status == 'completed')) {
           amount = _toDouble(booking['price'] ?? booking['amount']);
         }
       }
 
-      if (amount <= 0) {
-        return runningTotal;
-      }
+      if (amount <= 0) continue;
 
+      allTimeIncome += amount;
+
+      // Also compute this month's income
       final dt = _toDateTime(booking['scheduledAt'] ?? booking['sessionAt'], booking);
-      if (dt != null && dt.isBefore(startOfMonth)) return runningTotal;
+      if (dt == null || !dt.isBefore(startOfMonth)) {
+        currentMonthIncome += amount;
+      }
+    }
 
-      return runningTotal + amount;
-    });
+    // Subtract refunds that have been approved/processed
+    for (final r in refunds) {
+      final rStatus = (r['status'] ?? '').toString().toLowerCase();
+      if (rStatus == 'approved' || rStatus == 'processed' || rStatus == 'completed') {
+        final refundAmount = _toDouble(r['amount']);
+        allTimeIncome -= refundAmount;
+        currentMonthIncome -= refundAmount;
+      }
+    }
+
+    totalIncome.value = allTimeIncome.clamp(0.0, double.infinity);
+    monthlyIncome.value = currentMonthIncome.clamp(0.0, double.infinity);
   }
 
   void _recomputeRatings() {
@@ -1047,9 +1112,12 @@ class TrainerDashboardController extends ChangeNotifier {
   List<Map<String, dynamic>> get earningsHistory {
     final history = <Map<String, dynamic>>[];
 
-    // 1. Add payments and refunds from bookings
+    // 1. Add payments from bookings (all bookings where money was received)
     for (final b in bookings) {
       final status = (b['status'] ?? '').toString().toLowerCase();
+      // Skip rejected bookings — no payment ever made
+      if (status == 'rejected') continue;
+
       final clientName = (b['clientName'] ?? b['userName'] ?? 'Client').toString();
       final sessionType = (b['type'] ?? b['sessionType'] ?? 'Session').toString();
       final date = (b['date'] ?? '').toString();
@@ -1059,45 +1127,65 @@ class TrainerDashboardController extends ChangeNotifier {
       final isPaid = b['paid'] == true ||
                      paymentStatus == 'fully_paid' ||
                      paymentStatus == 'partially_paid' ||
+                     paymentStatus == 'completed' ||
                      (paymentStatus.isEmpty && status == 'completed');
 
-      if (!isPaid) {
-        continue;
-      }
+      if (!isPaid) continue;
 
       double amountPaid = _toDouble(b['amountPaid']);
       if (amountPaid <= 0) {
-        if (b['paid'] == true || (paymentStatus.isEmpty && status == 'completed')) {
+        amountPaid = _toDouble(b['paymentAmount']);
+      }
+      if (amountPaid <= 0) {
+        if (b['paid'] == true || paymentStatus == 'completed' ||
+            paymentStatus == 'fully_paid' ||
+            (paymentStatus.isEmpty && status == 'completed')) {
           amountPaid = _toDouble(b['price'] ?? b['amount']);
         }
       }
 
       if (amountPaid <= 0) continue;
 
-      // Calculate timestamp for sorting
-      final createdAtRaw = b['createdAt'] ?? b['updatedAt'] ?? b['scheduledAt'] ?? b['sessionAt'];
-      DateTime dt = _toDateTime(createdAtRaw, b) ?? DateTime.now();
+      // Use payment/update timestamp for sorting
+      final updatedAtRaw = b['updatedAt'] ?? b['createdAt'] ?? b['scheduledAt'] ?? b['sessionAt'];
+      final DateTime dt = _toDateTime(updatedAtRaw, b) ?? DateTime.now();
 
-      if (status == 'cancelled' || status == 'rejected') {
-        history.add({
-          'type': 'refund',
-          'title': 'Refund — $clientName Session',
-          'subtitle': '$sessionType on $date at $time',
-          'amount': -amountPaid,
-          'dateTime': dt,
-          'status': 'completed',
-        });
-      } else {
-        // Active booking payment
-        history.add({
-          'type': 'payment',
-          'title': 'Payment from $clientName',
-          'subtitle': '$sessionType on $date at $time',
-          'amount': amountPaid,
-          'dateTime': dt,
-          'status': 'completed',
-        });
-      }
+      final paymentLabel = paymentStatus == 'partially_paid'
+          ? 'Deposit from $clientName'
+          : 'Payment from $clientName';
+      final paymentSubtitle = status == 'cancelled'
+          ? '$sessionType on $date at $time (Cancelled)'
+          : '$sessionType on $date at $time';
+
+      history.add({
+        'type': 'payment',
+        'title': paymentLabel,
+        'subtitle': paymentSubtitle,
+        'amount': amountPaid,
+        'dateTime': dt,
+        'status': status == 'cancelled' ? 'cancelled' : 'completed',
+      });
+    }
+
+    // 2. Add refunds from the Firestore refunds collection
+    for (final r in refunds) {
+      final rStatus = (r['status'] ?? 'pending').toString();
+      final rAmount = _toDouble(r['amount']);
+      final clientName = (r['clientName'] ?? 'Client').toString();
+      final sessionType = (r['sessionType'] ?? 'Session').toString();
+      final sessionDate = (r['sessionDate'] ?? '').toString();
+      final sessionTime = (r['sessionTime'] ?? '').toString();
+      final createdAtRaw = r['createdAt'];
+      final DateTime dt = _toDateTime(createdAtRaw) ?? DateTime.now();
+
+      history.add({
+        'type': 'refund',
+        'title': 'Refund — $clientName Session',
+        'subtitle': '$sessionType on $sessionDate at $sessionTime',
+        'amount': -rAmount,
+        'dateTime': dt,
+        'status': rStatus,
+      });
     }
 
     // 2. Add payouts

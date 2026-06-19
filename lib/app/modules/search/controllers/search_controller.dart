@@ -59,6 +59,7 @@ class SearchNotifier extends AutoDisposeNotifier<SearchState> {
   final List<StreamSubscription<dynamic>> _subs = [];
   final Map<String, Map<String, dynamic>> _trainerUsersByUid = {};
   final Map<String, Map<String, dynamic>> _trainerProfilesByUid = {};
+  final Map<String, List<double>> _trainerRatings = {};
 
   final List<String> specialties = const [
     'All',
@@ -129,6 +130,26 @@ class SearchNotifier extends AutoDisposeNotifier<SearchState> {
             },
           ),
     );
+
+    _subs.add(
+      _firestore.collection('reviews').snapshots().listen(
+        (snap) {
+          _trainerRatings.clear();
+          for (final doc in snap.docs) {
+            final data = doc.data();
+            final tId = (data['trainerId'] ?? '').toString().trim();
+            final rVal = (data['rating'] as num?)?.toDouble() ?? 0.0;
+            if (tId.isNotEmpty && rVal > 0) {
+              _trainerRatings.putIfAbsent(tId, () => []).add(rVal);
+            }
+          }
+          _rebuildTrainerCatalog();
+        },
+        onError: (_) {
+          state = state.copyWith(isLoading: false);
+        },
+      ),
+    );
   }
 
   void _listenPostsRealtime() {
@@ -182,15 +203,22 @@ class SearchNotifier extends AutoDisposeNotifier<SearchState> {
 
       final sessionPrice = _toInt(profile['sessionPrice']);
 
+      final ratingsList = _trainerRatings[uid] ?? [];
+      final computedAvg = ratingsList.isEmpty
+          ? 0.0
+          : ratingsList.reduce((a, b) => a + b) / ratingsList.length;
+
+      final reviewCount = ratingsList.isNotEmpty ? ratingsList.length : _toInt(user['reviewsCount']);
+      final rating = computedAvg > 0 ? computedAvg : _toDouble(user['rating']);
+
       merged.add({
         'id': uid,
         'trainerId': uid,
         'name': name,
         'specialty': specs.isNotEmpty ? specs.first : 'Personal Training',
         'specializations': specs,
-        'rating':
-            _toDouble(user['rating']) > 0 ? _toDouble(user['rating']) : 4.7,
-        'reviews': _toInt(user['reviewsCount']),
+        'rating': rating > 0 ? rating : 4.7,
+        'reviews': reviewCount,
         'sessions': _toInt(user['sessionsCount']),
         'price': sessionPrice > 0 ? sessionPrice : 40,
         'pricePerHour': sessionPrice > 0 ? sessionPrice : 40,

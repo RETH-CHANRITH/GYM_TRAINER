@@ -789,7 +789,8 @@ class _FavouriteViewState extends ConsumerState<FavouriteView> {
         ? (price * (1 - (discountApplied / 100))).round() 
         : price;
     final remaining = targetPrice - amountPaid;
-    final paymentStatus = b['paymentStatus'] as String? ?? (paid ? 'fully_paid' : (amountPaid > 0 ? 'partially_paid' : 'unpaid'));
+    var paymentStatus = b['paymentStatus'] as String? ?? (paid ? 'fully_paid' : (amountPaid > 0 ? 'partially_paid' : 'unpaid'));
+    if (paymentStatus == 'completed') paymentStatus = 'fully_paid';
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final Color paymentColor = paymentStatus == 'fully_paid'
@@ -1156,8 +1157,13 @@ class _FavouriteViewState extends ConsumerState<FavouriteView> {
     final paid = b['paid'] == true;
     final amountPaid = (b['amountPaid'] as num?)?.toInt() ?? 0;
     final price = (b['price'] as num?)?.toInt() ?? 0;
-    final remaining = price - amountPaid;
-    final paymentStatus = b['paymentStatus'] as String? ?? (paid ? 'fully_paid' : (amountPaid > 0 ? 'partially_paid' : 'unpaid'));
+    final discountApplied = (b['discountApplied'] as num?)?.toInt() ?? 0;
+    final targetPrice = discountApplied > 0 
+        ? (price * (1 - (discountApplied / 100))).round() 
+        : price;
+    final remaining = targetPrice - amountPaid;
+    var paymentStatus = b['paymentStatus'] as String? ?? (paid ? 'fully_paid' : (amountPaid > 0 ? 'partially_paid' : 'unpaid'));
+    if (paymentStatus == 'completed') paymentStatus = 'fully_paid';
 
     return GestureDetector(
       onTap: () => _showBookingDetail(context, b, index),
@@ -1321,7 +1327,7 @@ class _FavouriteViewState extends ConsumerState<FavouriteView> {
                             child: Text(
                               paymentStatus == 'partially_paid'
                                   ? 'Pay Balance (\$$remaining)'
-                                  : 'Pay \$${b['price']}',
+                                  : 'Pay \$$targetPrice',
                               style: TextStyle(
                                 fontWeight: FontWeight.w600,
                                 color: paymentStatus == 'partially_paid' ? Colors.white : ink,

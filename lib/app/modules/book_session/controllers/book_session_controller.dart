@@ -206,6 +206,28 @@ class BookSessionNotifier extends StateNotifier<BookSessionState> {
         }, onError: (_) {}),
       );
 
+      // Listen to reviews collection for dynamic rating
+      _subs.add(
+        _firestore
+            .collection('reviews')
+            .where('trainerId', isEqualTo: uid)
+            .snapshots()
+            .listen((snap) {
+          final vals = snap.docs
+              .map((d) => (d.data()['rating'] as num?)?.toDouble() ?? 0.0)
+              .where((v) => v > 0)
+              .toList();
+          final avg = vals.isEmpty
+              ? 0.0
+              : vals.reduce((a, b) => a + b) / vals.length;
+          if (avg > 0 && mounted) {
+            state = state.copyWith(
+              rating: avg,
+            );
+          }
+        }, onError: (_) {}),
+      );
+
       // Listen to trainerProfiles collection for price, specialty, and availability
       _subs.add(
         _firestore.collection('trainerProfiles').doc(uid).snapshots().listen((doc) {
@@ -425,11 +447,13 @@ class BookSessionNotifier extends StateNotifier<BookSessionState> {
       final initialTime = initialArgs!['time'] as String?;
 
       String startSlot = initialTime ?? state.selectedSlot;
-      String endSlot = state.selectedEndTime;
       if (initialTime != null && initialTime.contains(' - ')) {
         final times = initialTime.split(' - ');
         startSlot = times[0];
-        endSlot = times[1];
+      }
+      String endSlot = '';
+      if (startSlot.isNotEmpty) {
+        endSlot = _calculateEndTime(startSlot);
       }
 
       state = state.copyWith(
@@ -447,6 +471,22 @@ class BookSessionNotifier extends StateNotifier<BookSessionState> {
         selectedEndTime: endSlot,
       );
     }
+  }
+
+  String _calculateEndTime(String startSlot) {
+    if (startSlot.isEmpty) return '';
+    final parsed = _parseTimeStr(startSlot);
+    int hour = parsed['hour'] ?? 9;
+    int minute = parsed['minute'] ?? 0;
+    
+    hour = (hour + 1) % 24;
+    
+    final ampm = hour >= 12 ? 'PM' : 'AM';
+    final displayHour = hour % 12 == 0 ? 12 : hour % 12;
+    final hourStr = displayHour.toString().padLeft(2, '0');
+    final minuteStr = minute.toString().padLeft(2, '0');
+    
+    return '$hourStr:$minuteStr $ampm';
   }
 
   void pickDate(DateTime date) {
@@ -468,7 +508,7 @@ class BookSessionNotifier extends StateNotifier<BookSessionState> {
   void pickSlot(String slot) {
     state = state.copyWith(
       selectedSlot: slot,
-      selectedEndTime: '',
+      selectedEndTime: _calculateEndTime(slot),
     );
   }
 
@@ -631,7 +671,7 @@ class BookSessionNotifier extends StateNotifier<BookSessionState> {
     }
 
     state = state.copyWith(isSubmitting: true);
-    final totalPrice = state.price * sessionDurationHours;
+    final totalPrice = state.price;
     final effectiveDiscount = state.promoDiscount > 0 ? state.promoDiscount : state.clientDiscount;
     final amountPaid = totalPrice * (1 - (effectiveDiscount / 100));
 

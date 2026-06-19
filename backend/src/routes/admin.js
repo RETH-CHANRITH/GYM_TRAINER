@@ -21,8 +21,8 @@ router.get('/dashboard', verifyToken, verifyAdmin, async (req, res) => {
       totalBookings: bookings.total,
       completedBookings: bookings.items.filter(b => b.status === 'completed').length,
       totalRevenue: bookings.items
-        .filter(b => b.paymentStatus === 'completed')
-        .reduce((sum, b) => sum + (b.price || 0), 0),
+        .filter(b => b.paymentStatus === 'completed' || b.paymentStatus === 'fully_paid' || b.paymentStatus === 'partially_paid' || b.paid === true)
+        .reduce((sum, b) => sum + (b.amountPaid || b.paymentAmount || b.price || 0), 0),
       totalReviews: reviews.total,
       averageRating: reviews.items.length > 0
         ? (reviews.items.reduce((sum, r) => sum + r.rating, 0) / reviews.items.length).toFixed(1)
@@ -316,8 +316,8 @@ router.get('/analytics', verifyToken, verifyAdmin, async (req, res) => {
           const now = new Date();
           return bookingDate.getMonth() === now.getMonth() && bookingDate.getFullYear() === now.getFullYear();
         })
-        .filter(b => b.paymentStatus === 'completed')
-        .reduce((sum, b) => sum + (b.price || 0), 0),
+        .filter(b => b.paymentStatus === 'completed' || b.paymentStatus === 'fully_paid' || b.paymentStatus === 'partially_paid' || b.paid === true)
+        .reduce((sum, b) => sum + (b.amountPaid || b.paymentAmount || b.price || 0), 0),
       topTrainers: await getTopTrainers(bookings.items),
       userGrowth: await getUserGrowth()
     };

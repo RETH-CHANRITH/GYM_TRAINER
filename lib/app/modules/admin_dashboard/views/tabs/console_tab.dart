@@ -19,341 +19,346 @@ class ConsoleTab extends ConsumerWidget {
         return _buildLoadingState(accent);
       }
 
-      return SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ─── System Status Banner ─────────────────────────────────────────
-            _buildStatusBanner(accent),
-            const SizedBox(height: 24),
-
-            // ─── KPI Grid 1: Core Metrics ───────────────────────────────────
-            Text(
-              'Platform Overview',
-              style: GoogleFonts.dmSans(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
+      return RefreshIndicator(
+        onRefresh: () => Future<void>.delayed(const Duration(milliseconds: 800)),
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ─── System Status Banner ─────────────────────────────────────────
+              _buildStatusBanner(accent),
+              const SizedBox(height: 24),
+  
+              // ─── KPI Grid 1: Core Metrics ───────────────────────────────────
+              Text(
+                'Platform Overview',
+                style: GoogleFonts.dmSans(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
               ),
-            ),
-            const SizedBox(height: 12),
-            GridView.count(
-              crossAxisCount: 2,
-              mainAxisSpacing: 12,
-              crossAxisSpacing: 12,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              children: [
-                Obx(
-                  () => KpiCard(
-                    title: 'Active Users',
-                    value: '${controller.activeUsersCount.value}',
-                    icon: Icons.people_rounded,
-                    accentColor: kSky,
-                  ),
-                ),
-                Obx(
-                  () => KpiCard(
-                    title: 'Active Trainers',
-                    value: '${controller.activeTrainersCount.value}',
-                    icon: Icons.verified_rounded,
-                    accentColor: kLilac,
-                  ),
-                ),
-                Obx(
-                  () => KpiCard(
-                    title: 'Open Bookings',
-                    value: '${controller.openBookingsCount.value}',
-                    icon: Icons.calendar_month_rounded,
-                    accentColor: accent,
-                  ),
-                ),
-                Obx(
-                  () => KpiCard(
-                    title: 'Pending Apps',
-                    value:
-                        '${controller.pendingTrainerApplicationsCount.value}',
-                    icon: Icons.pending_actions_rounded,
-                    accentColor: Colors.orange,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-
-            // ─── KPI Grid 2: Operational Metrics ─────────────────────────────
-            Text(
-              'Operational Status',
-              style: GoogleFonts.dmSans(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 12),
-            GridView.count(
-              crossAxisCount: 2,
-              mainAxisSpacing: 12,
-              crossAxisSpacing: 12,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              children: [
-                Obx(
-                  () => KpiCard(
-                    title: 'Support Queue',
-                    value: '${controller.supportOpenCount.value}',
-                    icon: Icons.support_agent_rounded,
-                    accentColor: kCoral,
-                  ),
-                ),
-                Obx(
-                  () => KpiCard(
-                    title: 'Open Disputes',
-                    value: '${controller.disputeOpenCount.value}',
-                    icon: Icons.gavel_rounded,
-                    accentColor: Colors.red,
-                  ),
-                ),
-                Obx(
-                  () => KpiCard(
-                    title: 'Pending Payouts',
-                    value: '${controller.payoutPendingCount.value}',
-                    icon: Icons.account_balance_wallet_rounded,
-                    accentColor: kSky,
-                  ),
-                ),
-                Obx(
-                  () => KpiCard(
-                    title: 'Pending Refunds',
-                    value: '${controller.refundPendingCount.value}',
-                    icon: Icons.money_off_rounded,
-                    accentColor: Colors.amber,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-
-            // ─── Finance KPI ────────────────────────────────────────────────
-            Text(
-              'Finance',
-              style: GoogleFonts.dmSans(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(16),
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [accent.withOpacity(0.15), kLilac.withOpacity(0.15)],
-                ),
-                border: Border.all(color: Colors.white.withOpacity(0.12)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              const SizedBox(height: 12),
+              GridView.count(
+                crossAxisCount: 2,
+                mainAxisSpacing: 12,
+                crossAxisSpacing: 12,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Monthly Revenue',
+                  Obx(
+                    () => KpiCard(
+                      title: 'Active Users',
+                      value: '${controller.activeUsersCount.value}',
+                      icon: Icons.people_rounded,
+                      accentColor: kSky,
+                    ),
+                  ),
+                  Obx(
+                    () => KpiCard(
+                      title: 'Active Trainers',
+                      value: '${controller.activeTrainersCount.value}',
+                      icon: Icons.verified_rounded,
+                      accentColor: kLilac,
+                    ),
+                  ),
+                  Obx(
+                    () => KpiCard(
+                      title: 'Open Bookings',
+                      value: '${controller.openBookingsCount.value}',
+                      icon: Icons.calendar_month_rounded,
+                      accentColor: accent,
+                    ),
+                  ),
+                  Obx(
+                    () => KpiCard(
+                      title: 'Pending Apps',
+                      value:
+                          '${controller.pendingTrainerApplicationsCount.value}',
+                      icon: Icons.pending_actions_rounded,
+                      accentColor: Colors.orange,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+  
+              // ─── KPI Grid 2: Operational Metrics ─────────────────────────────
+              Text(
+                'Operational Status',
+                style: GoogleFonts.dmSans(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 12),
+              GridView.count(
+                crossAxisCount: 2,
+                mainAxisSpacing: 12,
+                crossAxisSpacing: 12,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                children: [
+                  Obx(
+                    () => KpiCard(
+                      title: 'Support Queue',
+                      value: '${controller.supportOpenCount.value}',
+                      icon: Icons.support_agent_rounded,
+                      accentColor: kCoral,
+                    ),
+                  ),
+                  Obx(
+                    () => KpiCard(
+                      title: 'Open Disputes',
+                      value: '${controller.disputeOpenCount.value}',
+                      icon: Icons.gavel_rounded,
+                      accentColor: Colors.red,
+                    ),
+                  ),
+                  Obx(
+                    () => KpiCard(
+                      title: 'Pending Payouts',
+                      value: '${controller.payoutPendingCount.value}',
+                      icon: Icons.account_balance_wallet_rounded,
+                      accentColor: kSky,
+                    ),
+                  ),
+                  Obx(
+                    () => KpiCard(
+                      title: 'Pending Refunds',
+                      value: '${controller.refundPendingCount.value}',
+                      icon: Icons.money_off_rounded,
+                      accentColor: Colors.amber,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+  
+              // ─── Finance KPI ────────────────────────────────────────────────
+              Text(
+                'Finance',
+                style: GoogleFonts.dmSans(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [accent.withOpacity(0.15), kLilac.withOpacity(0.15)],
+                  ),
+                  border: Border.all(color: Colors.white.withOpacity(0.12)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Monthly Revenue',
+                          style: GoogleFonts.dmSans(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: kMuted,
+                          ),
+                        ),
+                         Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: accent.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            'Active',
+                            style: GoogleFonts.dmSans(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: accent,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Obx(
+                      () => Text(
+                        '\$${controller.monthlyRevenue.value.toStringAsFixed(2)}',
                         style: GoogleFonts.dmSans(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
+                          fontSize: 32,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Obx(
+                      () => Text(
+                        '${controller.monthlyRevenueBookingsCount.value} bookings',
+                        style: GoogleFonts.dmSans(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w400,
                           color: kMuted,
                         ),
                       ),
-                       Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: accent.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          'Active',
-                          style: GoogleFonts.dmSans(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: accent,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Obx(
-                    () => Text(
-                      '\$${controller.monthlyRevenue.value.toStringAsFixed(2)}',
-                      style: GoogleFonts.dmSans(
-                        fontSize: 32,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+  
+              // ─── GDPR & Audit Status ────────────────────────────────────────
+              Row(
+                children: [
+                  Expanded(
+                    child: KpiCard(
+                      title: 'GDPR Requests',
+                      value: '${controller.gdprPendingCount.value}',
+                      icon: Icons.privacy_tip_rounded,
+                      accentColor: Colors.purple,
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  Obx(
-                    () => Text(
-                      '${controller.transactions.length} transactions',
-                      style: GoogleFonts.dmSans(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w400,
-                        color: kMuted,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Obx(
+                      () => KpiCard(
+                        title: 'Audit Logs',
+                        value: '${controller.auditLogs.length}',
+                        icon: Icons.history_rounded,
+                        accentColor: kSky,
                       ),
                     ),
                   ),
                 ],
               ),
-            ),
-            const SizedBox(height: 24),
-
-            // ─── GDPR & Audit Status ────────────────────────────────────────
-            Row(
-              children: [
-                Expanded(
-                  child: KpiCard(
-                    title: 'GDPR Requests',
-                    value: '${controller.gdprPendingCount.value}',
-                    icon: Icons.privacy_tip_rounded,
-                    accentColor: Colors.purple,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Obx(
-                    () => KpiCard(
-                      title: 'Audit Logs',
-                      value: '${controller.auditLogs.length}',
-                      icon: Icons.history_rounded,
-                      accentColor: kSky,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-
-            // ─── Platform Campaign Center ───────────────────────────────────
-            Row(
-              children: [
-                Container(
-                  width: 3,
-                  height: 18,
-                  decoration: BoxDecoration(
-                    color: accent,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  'Platform Campaign Center',
-                  style: GoogleFonts.dmSans(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                  ),
-                ),
-                const Spacer(),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: accent.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: accent.withOpacity(0.3)),
-                  ),
-                  child: Text(
-                    'ADMIN TOOL',
-                    style: GoogleFonts.dmSans(
-                      fontSize: 9,
-                      fontWeight: FontWeight.w800,
+              const SizedBox(height: 24),
+  
+              // ─── Platform Campaign Center ───────────────────────────────────
+              Row(
+                children: [
+                  Container(
+                    width: 3,
+                    height: 18,
+                    decoration: BoxDecoration(
                       color: accent,
-                      letterSpacing: 1.0,
+                      borderRadius: BorderRadius.circular(4),
                     ),
                   ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Platform Campaign Center',
+                    style: GoogleFonts.dmSans(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const Spacer(),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: accent.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: accent.withOpacity(0.3)),
+                    ),
+                    child: Text(
+                      'ADMIN TOOL',
+                      style: GoogleFonts.dmSans(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w800,
+                        color: accent,
+                        letterSpacing: 1.0,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Create & publish promotions to all clients instantly',
+                style: GoogleFonts.dmSans(fontSize: 11, color: kMuted),
+              ),
+              const SizedBox(height: 14),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.04),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.white.withOpacity(0.08)),
                 ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Create & publish promotions to all clients instantly',
-              style: GoogleFonts.dmSans(fontSize: 11, color: kMuted),
-            ),
-            const SizedBox(height: 14),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.04),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.white.withOpacity(0.08)),
+                child: _CampaignCenterCard(controller: controller),
               ),
-              child: _CampaignCenterCard(controller: controller),
-            ),
-            const SizedBox(height: 24),
-
-            // ─── Recent Activity ─────────────────────────────────────────────
-            Text(
-              'Recent Activity',
-              style: GoogleFonts.dmSans(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
+              const SizedBox(height: 24),
+  
+              // ─── Recent Activity ─────────────────────────────────────────────
+              Text(
+                'Recent Activity',
+                style: GoogleFonts.dmSans(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
               ),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(16),
-                color: Colors.white.withOpacity(0.08),
-                border: Border.all(color: Colors.white.withOpacity(0.12)),
-              ),
-              child: Obx(() {
-                if (controller.recentActivity.isEmpty) {
-                  return EmptyStateWidget(
-                    title: 'No Activity',
-                    message: 'No recent activity to display',
-                    icon: Icons.history_rounded,
-                  );
-                }
-
-                return Column(
-                  children: List.generate(controller.recentActivity.length, (
-                    index,
-                  ) {
-                    final activity = controller.recentActivity[index];
-                    return Column(
-                      children: [
-                        ActivityItem(
-                          title: activity['title'] ?? 'Activity',
-                          subtitle: activity['subtitle'] ?? '',
-                          time: activity['time'] ?? 'Now',
-                        ),
-                        if (index < controller.recentActivity.length - 1)
-                          Divider(
-                            color: Colors.white.withOpacity(0.08),
-                            height: 16,
-                          ),
-                      ],
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  color: Colors.white.withOpacity(0.08),
+                  border: Border.all(color: Colors.white.withOpacity(0.12)),
+                ),
+                child: Obx(() {
+                  if (controller.recentActivity.isEmpty) {
+                    return EmptyStateWidget(
+                      title: 'No Activity',
+                      message: 'No recent activity to display',
+                      icon: Icons.history_rounded,
                     );
-                  }),
-                );
-              }),
-            ),
-            const SizedBox(height: 32),
-          ],
+                  }
+  
+                  return Column(
+                    children: List.generate(controller.recentActivity.length, (
+                      index,
+                    ) {
+                      final activity = controller.recentActivity[index];
+                      return Column(
+                        children: [
+                          ActivityItem(
+                            title: activity['title'] ?? 'Activity',
+                            subtitle: activity['subtitle'] ?? '',
+                            time: activity['time'] ?? 'Now',
+                          ),
+                          if (index < controller.recentActivity.length - 1)
+                            Divider(
+                              color: Colors.white.withOpacity(0.08),
+                              height: 16,
+                            ),
+                        ],
+                      );
+                    }),
+                  );
+                }),
+              ),
+              const SizedBox(height: 32),
+            ],
+          ),
         ),
       );
     });
+  }
   }
 
   Widget _buildStatusBanner([Color? accent]) {
@@ -429,7 +434,7 @@ class ConsoleTab extends ConsumerWidget {
       ),
     );
   }
-}
+
 
 class Obx extends ConsumerWidget {
   final Widget Function() builder;

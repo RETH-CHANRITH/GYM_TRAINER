@@ -54,109 +54,150 @@ class _TrainerApplicationsTabState extends ConsumerState<TrainerApplicationsTab>
   @override
   Widget build(BuildContext context) {
     final controller = ref.watch(adminDashboardProvider);
+    final accent = Theme.of(context).colorScheme.primary;
 
     return Column(
       children: [
-        // Action Button Header
+        // ── Header bar with search ───────────────────────────
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
-          child: AdminActionButton(
-            label: 'Refresh Applications',
-            icon: Icons.refresh_rounded,
-            onPressed: () => controller.loadTrainerApplications(),
-            width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 10),
+          child: Container(
+            height: 44,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.05),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.white.withOpacity(0.1)),
+            ),
+            child: TextField(
+              controller: _searchController,
+              onChanged: (v) => setState(() => _searchQuery = v),
+              style: GoogleFonts.dmSans(color: Colors.white, fontSize: 13),
+              decoration: InputDecoration(
+                hintText: 'Search applicant...',
+                hintStyle: GoogleFonts.dmSans(color: kMuted, fontSize: 13),
+                prefixIcon: const Icon(Icons.search_rounded, color: kMuted, size: 18),
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+            ),
           ),
         ),
 
-        // Search Input
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-          child: AdminSearchBar(
-            controller: _searchController,
-            hintText: 'Search by name, email or specialty...',
-            onSearch: () {
-              setState(() {
-                _searchQuery = _searchController.text;
-              });
-            },
-          ),
-        ),
+        // ── Status filter chips ────────────────────────────────────────
+        Obx(() => _buildFilterTabs(controller.trainerApplications)),
+        const SizedBox(height: 12),
 
-        const SizedBox(height: 10),
-
-        // Custom Filter Tabs
-        _buildFilterTabs(controller.trainerApplications),
-
-        const SizedBox(height: 10),
-
-        // Dynamic Applications List
+        // ── List ──────────────────────────────────────────────────────
         Expanded(
-          child: Obx(() {
-            if (controller.loadingApplications.value) {
-              return Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
+          child: RefreshIndicator(
+            onRefresh: () => Future.wait([
+              controller.loadTrainerApplications(),
+              Future.delayed(const Duration(milliseconds: 800)),
+            ]),
+            child: Obx(() {
+              if (controller.loadingApplications.value) {
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      SizedBox(
+                        width: 36,
+                        height: 36,
+                        child: CircularProgressIndicator(
+                          color: accent,
+                          strokeWidth: 2,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Loading applications...',
+                        style: GoogleFonts.dmSans(fontSize: 13, color: kMuted),
+                      ),
+                    ],
+                  ),
+                );
+              }
+
+              final allApps = controller.trainerApplications;
+              var filtered = allApps.toList();
+              if (_selectedStatus != 'all') {
+                filtered = filtered
+                    .where((a) =>
+                        (a['status'] ?? 'pending').toString().toLowerCase() ==
+                        _selectedStatus)
+                    .toList();
+              }
+              if (_searchQuery.isNotEmpty) {
+                final q = _searchQuery.toLowerCase();
+                filtered = filtered.where((a) {
+                  final name = (a['fullName'] ?? '').toString().toLowerCase();
+                  final email = (a['email'] ?? '').toString().toLowerCase();
+                  return name.contains(q) || email.contains(q);
+                }).toList();
+              }
+
+              if (filtered.isEmpty) {
+                return ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
                   children: [
-                    CircularProgressIndicator(color: Theme.of(context).colorScheme.primary),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Loading applications...',
-                      style: GoogleFonts.dmSans(fontSize: 13, color: kMuted),
+                    SizedBox(
+                      height: MediaQuery.of(context).size.height * 0.5,
+                      child: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Container(
+                              width: 72,
+                              height: 72,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.04),
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.white.withOpacity(0.08)),
+                              ),
+                              child: Icon(
+                                _selectedStatus == 'approved'
+                                    ? Icons.verified_rounded
+                                    : _selectedStatus == 'rejected'
+                                        ? Icons.block_rounded
+                                        : Icons.inbox_rounded,
+                                color: kMuted,
+                                size: 32,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              _searchQuery.isNotEmpty ? 'No results found' : 'No applications here',
+                              style: GoogleFonts.dmSans(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.white,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              _searchQuery.isNotEmpty
+                                  ? 'Try a different name or email'
+                                  : 'Everything is up to date',
+                              style: GoogleFonts.dmSans(fontSize: 12, color: kMuted),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ],
-                ),
+                );
+              }
+
+              return ListView.separated(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+                itemCount: filtered.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 12),
+                itemBuilder: (context, i) =>
+                    _buildApplicationCard(context, controller, filtered[i]),
               );
-            }
-
-            final allApps = controller.trainerApplications;
-            
-            // Filter by status tab
-            var filtered = allApps.toList();
-            if (_selectedStatus != 'all') {
-              filtered = filtered.where((app) => (app['status'] ?? 'pending').toString().toLowerCase() == _selectedStatus).toList();
-            }
-            
-            // Filter by search query
-            if (_searchQuery.isNotEmpty) {
-              final q = _searchQuery.toLowerCase();
-              filtered = filtered.where((app) {
-                final name = (app['fullName'] ?? '').toString().toLowerCase();
-                final email = (app['email'] ?? '').toString().toLowerCase();
-                final specialty = (app['specialty'] ?? '').toString().toLowerCase();
-                return name.contains(q) || email.contains(q) || specialty.contains(q);
-              }).toList();
-            }
-
-            if (filtered.isEmpty) {
-              final statusLabel = _selectedStatus == 'all' 
-                  ? 'Applications' 
-                  : '${_selectedStatus[0].toUpperCase()}${_selectedStatus.substring(1)} Applications';
-              return EmptyStateWidget(
-                title: _searchQuery.isNotEmpty 
-                    ? 'No matching results' 
-                    : 'No $statusLabel',
-                message: _searchQuery.isNotEmpty
-                    ? 'Try adjusting your search terms'
-                    : 'All trainer applications in this section are up to date',
-                icon: _selectedStatus == 'approved' 
-                    ? Icons.check_circle_outline_rounded 
-                    : _selectedStatus == 'rejected' 
-                        ? Icons.cancel_outlined 
-                        : Icons.done_all_rounded,
-              );
-            }
-
-            return ListView.separated(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              itemCount: filtered.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 8),
-              itemBuilder: (context, index) => _buildApplicationCard(
-                context, 
-                controller, 
-                filtered[index],
-              ),
-            );
-          }),
+            }),
+          ),
         ),
       ],
     );
@@ -166,19 +207,18 @@ class _TrainerApplicationsTabState extends ConsumerState<TrainerApplicationsTab>
     final pendingCount = allApps.where((a) => (a['status'] ?? 'pending').toString().toLowerCase() == 'pending').length;
     final approvedCount = allApps.where((a) => (a['status'] ?? '').toString().toLowerCase() == 'approved').length;
     final rejectedCount = allApps.where((a) => (a['status'] ?? '').toString().toLowerCase() == 'rejected').length;
-    final totalCount = allApps.length;
 
     final tabs = [
-      {'status': 'pending', 'label': 'Pending', 'count': pendingCount, 'color': Colors.orange},
-      {'status': 'approved', 'label': 'Approved', 'count': approvedCount, 'color': Colors.green},
-      {'status': 'rejected', 'label': 'Rejected', 'count': rejectedCount, 'color': Colors.red},
-      {'status': 'all', 'label': 'All', 'count': totalCount, 'color': Theme.of(context).colorScheme.primary},
+      {'status': 'pending', 'label': 'Pending', 'count': pendingCount, 'color': const Color(0xFFFFBB33)},
+      {'status': 'approved', 'label': 'Approved', 'count': approvedCount, 'color': const Color(0xFF4ADE80)},
+      {'status': 'rejected', 'label': 'Rejected', 'count': rejectedCount, 'color': const Color(0xFFFF5C5C)},
+      {'status': 'all', 'label': 'All', 'count': allApps.length, 'color': Theme.of(context).colorScheme.primary},
     ];
 
     return SizedBox(
-      height: 38,
+      height: 36,
       child: ListView.builder(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 20),
         scrollDirection: Axis.horizontal,
         itemCount: tabs.length,
         itemBuilder: (context, i) {
@@ -186,48 +226,66 @@ class _TrainerApplicationsTabState extends ConsumerState<TrainerApplicationsTab>
           final status = tab['status'] as String;
           final isActive = _selectedStatus == status;
           final color = tab['color'] as Color;
+          final count = tab['count'] as int;
 
           return GestureDetector(
-            onTap: () {
-              setState(() {
-                _selectedStatus = status;
-              });
-            },
+            onTap: () => setState(() => _selectedStatus = status),
             child: AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
+              duration: const Duration(milliseconds: 200),
               margin: const EdgeInsets.only(right: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 14),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
               decoration: BoxDecoration(
-                color: isActive ? color.withValues(alpha: 0.12) : Colors.white.withValues(alpha: 0.03),
-                borderRadius: BorderRadius.circular(10),
+                color: isActive ? color.withOpacity(0.15) : Colors.white.withOpacity(0.04),
+                borderRadius: BorderRadius.circular(18),
                 border: Border.all(
-                  color: isActive ? color.withValues(alpha: 0.35) : Colors.white.withValues(alpha: 0.08),
-                  width: 1,
+                  color: isActive ? color.withOpacity(0.5) : Colors.white.withOpacity(0.08),
+                  width: isActive ? 1.5 : 1,
                 ),
+                boxShadow: isActive
+                    ? [
+                        BoxShadow(
+                          color: color.withOpacity(0.2),
+                          blurRadius: 12,
+                          spreadRadius: 0,
+                        )
+                      ]
+                    : [],
               ),
-              child: Center(
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (isActive)
                     Container(
                       width: 6,
                       height: 6,
-                      decoration: BoxDecoration(
-                        color: color,
-                        shape: BoxShape.circle,
-                      ),
+                      margin: const EdgeInsets.only(right: 6),
+                      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
                     ),
-                    const SizedBox(width: 8),
-                    Text(
-                      '${tab['label']} (${tab['count']})',
+                  Text(
+                    tab['label'] as String,
+                    style: GoogleFonts.dmSans(
+                      fontSize: 12,
+                      fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+                      color: isActive ? color : kMuted,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: isActive ? color.withOpacity(0.2) : Colors.white.withOpacity(0.06),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      '$count',
                       style: GoogleFonts.dmSans(
-                        fontSize: 12,
-                        fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
-                        color: isActive ? Colors.white : kMuted,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: isActive ? color : kMuted,
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           );
@@ -237,230 +295,381 @@ class _TrainerApplicationsTabState extends ConsumerState<TrainerApplicationsTab>
   }
 
   Widget _buildApplicationCard(
-    BuildContext context, 
-    AdminDashboardController controller, 
+    BuildContext context,
+    AdminDashboardController controller,
     Map<String, dynamic> app,
   ) {
     final appId = app['id'] as String? ?? '';
     final userId = app['userId'] as String? ?? '';
     final name = app['fullName'] as String? ?? 'Unknown';
     final email = app['email'] as String? ?? 'N/A';
-    final specialty = app['specialty'] as String? ?? 'Not specified';
-    final experience = app['yearsOfExperience'] as String? ?? '0';
     final status = (app['status'] ?? 'pending').toString().toLowerCase();
     final photoUrl = app['photoUrl'] as String? ?? '';
+    final submittedAt = _formatDate(app['submittedAt']);
+
+    // Status visual tokens
+    final statusColor = status == 'approved'
+        ? const Color(0xFF4ADE80)
+        : status == 'rejected'
+            ? const Color(0xFFFF5C5C)
+            : const Color(0xFFFFBB33);
+    final statusIcon = status == 'approved'
+        ? Icons.verified_rounded
+        : status == 'rejected'
+            ? Icons.cancel_rounded
+            : Icons.hourglass_top_rounded;
+    final statusLabel = status == 'approved'
+        ? 'Approved'
+        : status == 'rejected'
+            ? 'Rejected'
+            : 'Pending';
 
     return Container(
-      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        color: Colors.white.withValues(alpha: 0.08),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+        borderRadius: BorderRadius.circular(20),
+        color: const Color(0xFF12001E),
+        border: Border.all(
+          color: statusColor.withOpacity(status == 'pending' ? 0.18 : 0.12),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: statusColor.withOpacity(0.06),
+            blurRadius: 20,
+            spreadRadius: 0,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: photoUrl.isEmpty
-                      ? LinearGradient(
-                          colors: [
-                            Colors.white.withValues(alpha: 0.08),
-                            Colors.white.withValues(alpha: 0.15),
-                          ],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        )
-                      : null,
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.12),
-                  ),
-                  image: photoUrl.isNotEmpty
-                      ? DecorationImage(
-                          image: CachedNetworkImageProvider(photoUrl),
-                          fit: BoxFit.cover,
-                        )
-                      : null,
-                ),
-                child: photoUrl.isEmpty
-                    ? const Center(
-                        child: Icon(
-                          Icons.person_rounded,
-                          color: Colors.white,
-                          size: 28,
-                        ),
-                      )
-                    : null,
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      name,
-                      style: GoogleFonts.dmSans(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                    ),
-                    Text(
-                      email,
-                      style: GoogleFonts.dmSans(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w400,
-                        color: kMuted,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              StatusBadge(status),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Divider(color: Colors.white.withValues(alpha: 0.08)),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(child: _buildInfoField('Specialty', specialty)),
-              Expanded(
-                child: _buildInfoField('Experience', '$experience years'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          if (app['certifications'] != null)
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          // ── Top section ─────────────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
               children: [
-                Text(
-                  'Certifications:',
-                  style: GoogleFonts.dmSans(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
+                // Avatar with gradient ring
+                Container(
+                  width: 60,
+                  height: 60,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFCBFF47), Color(0xFF5CE8FF)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(2.5),
+                    child: ClipOval(
+                      child: photoUrl.isNotEmpty
+                          ? CachedNetworkImage(
+                              imageUrl: photoUrl,
+                              fit: BoxFit.cover,
+                            )
+                          : Container(
+                              color: const Color(0xFF1E0040),
+                              child: Center(
+                                child: Text(
+                                  name.isNotEmpty ? name[0].toUpperCase() : '?',
+                                  style: GoogleFonts.dmSans(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ),
+                    ),
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  (app['certifications'] as String? ?? 'None')
-                      .split(',')
-                      .join('\n'),
-                  style: GoogleFonts.dmSans(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w400,
-                    color: kMuted,
-                  ),
-                ),
-                const SizedBox(height: 12),
-              ],
-            ),
-          
-          // Action Buttons or Audit Info Row depending on Status
-          if (status == 'pending')
-            Row(
-              children: [
+                const SizedBox(width: 14),
+                // Name + email + date
                 Expanded(
-                  child: Obx(
-                    () => AdminActionButton(
-                      label: 'Reject',
-                      icon: Icons.close_rounded,
-                      isDestructive: true,
-                      isLoading: controller.actionLoading.value,
-                      onPressed: appId.isNotEmpty
-                          ? () => _showRejectDialog(context, appId, controller)
-                          : null,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Obx(
-                    () => AdminActionButton(
-                      label: 'Approve',
-                      icon: Icons.check_rounded,
-                      isLoading: controller.actionLoading.value,
-                      onPressed: appId.isNotEmpty && userId.isNotEmpty
-                          ? () => controller.approveTrainerApplication(
-                                appId,
-                                userId,
-                              )
-                          : null,
-                    ),
-                  ),
-                ),
-              ],
-            )
-          else if (status == 'approved')
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: Colors.green.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.green.withValues(alpha: 0.25)),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.check_circle_rounded, color: Colors.green, size: 16),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Approved on ${_formatDate(app['reviewedAt'])}',
-                    style: GoogleFonts.dmSans(
-                      fontSize: 11,
-                      color: Colors.green,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            )
-          else if (status == 'rejected')
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.red.withValues(alpha: 0.06),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.red.withValues(alpha: 0.2)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(Icons.cancel_rounded, color: Colors.red, size: 16),
-                      const SizedBox(width: 8),
                       Text(
-                        'Rejected on ${_formatDate(app['reviewedAt'])}',
+                        name,
+                        style: GoogleFonts.dmSans(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        email,
                         style: GoogleFonts.dmSans(
                           fontSize: 11,
-                          color: Colors.red,
-                          fontWeight: FontWeight.w600,
+                          color: kMuted,
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      Row(
+                        children: [
+                          Icon(Icons.calendar_today_rounded,
+                              size: 10, color: kMuted),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Applied $submittedAt',
+                            style: GoogleFonts.dmSans(
+                              fontSize: 10,
+                              color: kMuted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                // Status badge
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: statusColor.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: statusColor.withOpacity(0.35)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(statusIcon, size: 10, color: statusColor),
+                      const SizedBox(width: 5),
+                      Text(
+                        statusLabel.toUpperCase(),
+                        style: GoogleFonts.dmSans(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                          color: statusColor,
+                          letterSpacing: 0.5,
                         ),
                       ),
                     ],
                   ),
-                  if (app['rejectionNotes'] != null && app['rejectionNotes'].toString().isNotEmpty) ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      'Feedback: ${app['rejectionNotes']}',
-                      style: GoogleFonts.dmSans(
-                        fontSize: 11,
-                        color: kMuted,
-                        height: 1.35,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
+                ),
+              ],
             ),
+          ),
+
+          // ── Divider ─────────────────────────────────────────────────
+          Divider(height: 1, color: Colors.white.withOpacity(0.07)),
+
+          // ── Action area ─────────────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              children: [
+                // Preview button
+                GestureDetector(
+                  onTap: () => _showPreviewDialog(context, app),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.04),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.white.withOpacity(0.1)),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.person_search_rounded,
+                            size: 15, color: Colors.white70),
+                        const SizedBox(width: 8),
+                        Text(
+                          'View Full Profile',
+                          style: GoogleFonts.dmSans(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white70,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                // Pending action buttons
+                if (status == 'pending') ...[
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      // Reject
+                      Expanded(
+                        child: Obx(
+                          () => GestureDetector(
+                            onTap: appId.isNotEmpty && !controller.actionLoading.value
+                                ? () => _showRejectDialog(context, appId, controller)
+                                : null,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 13),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFF5C5C).withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                    color: const Color(0xFFFF5C5C).withOpacity(0.3)),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  controller.actionLoading.value
+                                      ? const SizedBox(
+                                          width: 14,
+                                          height: 14,
+                                          child: CircularProgressIndicator(
+                                              color: Color(0xFFFF5C5C),
+                                              strokeWidth: 2),
+                                        )
+                                      : const Icon(Icons.close_rounded,
+                                          size: 14, color: Color(0xFFFF5C5C)),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'Reject',
+                                    style: GoogleFonts.dmSans(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w700,
+                                      color: const Color(0xFFFF5C5C),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      // Approve
+                      Expanded(
+                        child: Obx(
+                          () => GestureDetector(
+                            onTap: appId.isNotEmpty &&
+                                    userId.isNotEmpty &&
+                                    !controller.actionLoading.value
+                                ? () => controller.approveTrainerApplication(
+                                    appId, userId)
+                                : null,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 13),
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: [Color(0xFFCBFF47), Color(0xFFA8E63D)],
+                                ),
+                                borderRadius: BorderRadius.circular(12),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: const Color(0xFFCBFF47).withOpacity(0.3),
+                                    blurRadius: 12,
+                                    spreadRadius: 0,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ],
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  controller.actionLoading.value
+                                      ? const SizedBox(
+                                          width: 14,
+                                          height: 14,
+                                          child: CircularProgressIndicator(
+                                              color: Color(0xFF0A0A0F),
+                                              strokeWidth: 2),
+                                        )
+                                      : const Icon(Icons.check_rounded,
+                                          size: 14,
+                                          color: Color(0xFF0A0A0F)),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'Approve',
+                                    style: GoogleFonts.dmSans(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w800,
+                                      color: const Color(0xFF0A0A0F),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+
+                // Approved / Rejected audit row
+                if (status == 'approved') ...[
+                  const SizedBox(height: 10),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF4ADE80).withOpacity(0.07),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                          color: const Color(0xFF4ADE80).withOpacity(0.2)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.verified_rounded,
+                            color: Color(0xFF4ADE80), size: 15),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Approved on ${_formatDate(app['reviewedAt'])}',
+                          style: GoogleFonts.dmSans(
+                              fontSize: 12,
+                              color: const Color(0xFF4ADE80),
+                              fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+
+                if (status == 'rejected') ...[
+                  const SizedBox(height: 10),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFF5C5C).withOpacity(0.06),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                          color: const Color(0xFFFF5C5C).withOpacity(0.2)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.cancel_rounded,
+                                color: Color(0xFFFF5C5C), size: 14),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Rejected ${_formatDate(app['reviewedAt'])}',
+                              style: GoogleFonts.dmSans(
+                                  fontSize: 12,
+                                  color: const Color(0xFFFF5C5C),
+                                  fontWeight: FontWeight.w600),
+                            ),
+                          ],
+                        ),
+                        if (app['rejectionNotes'] != null &&
+                            app['rejectionNotes'].toString().isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            'Reason: ${app['rejectionNotes']}',
+                            style: GoogleFonts.dmSans(
+                                fontSize: 11, color: kMuted, height: 1.4),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -470,23 +679,13 @@ class _TrainerApplicationsTabState extends ConsumerState<TrainerApplicationsTab>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: GoogleFonts.dmSans(
-            fontSize: 10,
-            fontWeight: FontWeight.w500,
-            color: kMuted,
-          ),
-        ),
+        Text(label,
+            style: GoogleFonts.dmSans(
+                fontSize: 10, fontWeight: FontWeight.w500, color: kMuted)),
         const SizedBox(height: 4),
-        Text(
-          value,
-          style: GoogleFonts.dmSans(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: Colors.white,
-          ),
-        ),
+        Text(value,
+            style: GoogleFonts.dmSans(
+                fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white)),
       ],
     );
   }
@@ -572,6 +771,610 @@ class _TrainerApplicationsTabState extends ConsumerState<TrainerApplicationsTab>
           ),
         ],
       ),
+    );
+  }
+
+  void _showPreviewDialog(BuildContext context, Map<String, dynamic> app) {
+    final userId = app['userId'] as String? ?? '';
+    final name = app['fullName'] as String? ?? 'Unknown';
+    final email = app['email'] as String? ?? 'N/A';
+    final photoUrl = app['photoUrl'] as String? ?? '';
+    final submittedAt = _formatDate(app['submittedAt']);
+    final status = (app['status'] ?? 'pending').toString().toLowerCase();
+
+    final specialty = app['specialty'] as String? ?? '';
+    final yearsOfExperience = app['yearsOfExperience'] as String? ?? '0';
+    final hourlyRate = app['hourlyRate']?.toString() ?? '0.0';
+    final certifications = app['certifications'] as String? ?? '';
+    final bio = app['bio'] as String? ?? '';
+    final statusColor = status == 'approved'
+        ? const Color(0xFF4ADE80)
+        : status == 'rejected'
+            ? const Color(0xFFFF5C5C)
+            : const Color(0xFFFFBB33);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.92,
+        maxChildSize: 0.97,
+        minChildSize: 0.5,
+        builder: (_, scrollCtrl) => ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          child: Container(
+            color: const Color(0xFF0D0020),
+            child: FutureBuilder<DocumentSnapshot>(
+              future: userId.isNotEmpty
+                  ? FirebaseFirestore.instance.collection('users').doc(userId).get()
+                  : Future.value(null as dynamic),
+              builder: (_, snap) {
+                Map<String, dynamic> u = {};
+                if (snap.hasData && snap.data != null && snap.data!.exists) {
+                  u = snap.data!.data() as Map<String, dynamic>? ?? {};
+                }
+
+                final gender       = u['gender'] as String? ?? '—';
+                final age          = u['age']?.toString() ?? '—';
+                final weight       = u['weight']?.toString() ?? '—';
+                final height       = u['height']?.toString() ?? '—';
+                final fitnessGoal  = u['fitnessGoal'] as String? ?? '—';
+                final activityLvl  = u['activityLevel'] as String? ?? '—';
+                final fitnessLvl   = u['fitnessLevel'] as String? ?? '—';
+                final isLoading    = snap.connectionState == ConnectionState.waiting;
+
+                return CustomScrollView(
+                  controller: scrollCtrl,
+                  slivers: [
+                    // ── Hero photo section ────────────────────────────────
+                    SliverToBoxAdapter(
+                      child: Stack(
+                        children: [
+                          // Background gradient hero
+                          Container(
+                            height: 220,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  statusColor.withOpacity(0.25),
+                                  const Color(0xFF0D0020),
+                                ],
+                              ),
+                            ),
+                          ),
+                          // Close button
+                          Positioned(
+                            top: 16,
+                            right: 16,
+                            child: GestureDetector(
+                              onTap: () => Navigator.pop(ctx),
+                              child: Container(
+                                width: 36,
+                                height: 36,
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withOpacity(0.3),
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                      color: Colors.white.withOpacity(0.15)),
+                                ),
+                                child: const Icon(Icons.close_rounded,
+                                    color: Colors.white, size: 18),
+                              ),
+                            ),
+                          ),
+                          // Avatar + identity
+                          Positioned(
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            child: Column(
+                              children: [
+                                // Avatar
+                                Container(
+                                  width: 90,
+                                  height: 90,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    gradient: LinearGradient(
+                                      colors: [
+                                        statusColor,
+                                        statusColor.withOpacity(0.5),
+                                      ],
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: statusColor.withOpacity(0.4),
+                                        blurRadius: 24,
+                                        spreadRadius: 0,
+                                      ),
+                                    ],
+                                  ),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(3),
+                                    child: ClipOval(
+                                      child: photoUrl.isNotEmpty
+                                          ? CachedNetworkImage(
+                                              imageUrl: photoUrl,
+                                              fit: BoxFit.cover,
+                                            )
+                                          : Container(
+                                              color: const Color(0xFF1E0040),
+                                              child: Center(
+                                                child: Text(
+                                                  name.isNotEmpty
+                                                      ? name[0].toUpperCase()
+                                                      : '?',
+                                                  style: GoogleFonts.dmSans(
+                                                    fontSize: 34,
+                                                    fontWeight: FontWeight.w900,
+                                                    color: Colors.white,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 14),
+                                // Name
+                                Text(
+                                  name,
+                                  style: GoogleFonts.dmSans(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w900,
+                                    color: Colors.white,
+                                    letterSpacing: -0.3,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                // Email
+                                Text(
+                                  email,
+                                  style: GoogleFonts.dmSans(
+                                    fontSize: 13,
+                                    color: kMuted,
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                // Status + applied date chips
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 12, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: statusColor.withOpacity(0.15),
+                                        borderRadius: BorderRadius.circular(20),
+                                        border: Border.all(
+                                            color: statusColor.withOpacity(0.4)),
+                                      ),
+                                      child: Text(
+                                        status.toUpperCase(),
+                                        style: GoogleFonts.dmSans(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w800,
+                                          color: statusColor,
+                                          letterSpacing: 0.6,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 12, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white.withOpacity(0.06),
+                                        borderRadius: BorderRadius.circular(20),
+                                        border: Border.all(
+                                            color: Colors.white.withOpacity(0.1)),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          const Icon(
+                                              Icons.calendar_today_rounded,
+                                              size: 10,
+                                              color: kMuted),
+                                          const SizedBox(width: 5),
+                                          Text(
+                                            'Applied $submittedAt',
+                                            style: GoogleFonts.dmSans(
+                                              fontSize: 10,
+                                              color: kMuted,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 24),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // ── Loading shimmer ───────────────────────────────────
+                    if (isLoading)
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.all(32),
+                          child: Center(
+                            child: Column(
+                              children: [
+                                SizedBox(
+                                  width: 32,
+                                  height: 32,
+                                  child: CircularProgressIndicator(
+                                    color: statusColor,
+                                    strokeWidth: 2,
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                Text('Loading profile...',
+                                    style: GoogleFonts.dmSans(
+                                        fontSize: 12, color: kMuted)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+
+                    // ── Body Stats ────────────────────────────────────────
+                    if (!isLoading)
+                      SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+                        sliver: SliverToBoxAdapter(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _sectionLabel('BODY STATS'),
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  _statCard(
+                                    icon: Icons.wc_rounded,
+                                    iconColor: const Color(0xFF5CE8FF),
+                                    label: 'Gender',
+                                    value: gender,
+                                  ),
+                                  const SizedBox(width: 10),
+                                  _statCard(
+                                    icon: Icons.cake_rounded,
+                                    iconColor: const Color(0xFFFFBB33),
+                                    label: 'Age',
+                                    value: '$age yrs',
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 10),
+                              Row(
+                                children: [
+                                  _statCard(
+                                    icon: Icons.monitor_weight_rounded,
+                                    iconColor: const Color(0xFFCBFF47),
+                                    label: 'Weight',
+                                    value: '${weight} kg',
+                                  ),
+                                  const SizedBox(width: 10),
+                                  _statCard(
+                                    icon: Icons.height_rounded,
+                                    iconColor: const Color(0xFFA78BFA),
+                                    label: 'Height',
+                                    value: '${height} cm',
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 28),
+
+                              // ── Trainer Credentials ───────────────────
+                              _sectionLabel('TRAINER PROFILE'),
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  _statCard(
+                                    icon: Icons.sports_gymnastics_rounded,
+                                    iconColor: const Color(0xFF5CE8FF),
+                                    label: 'Specialty',
+                                    value: specialty.trim().isNotEmpty ? specialty : 'General Fitness',
+                                  ),
+                                  const SizedBox(width: 10),
+                                  _statCard(
+                                    icon: Icons.work_history_rounded,
+                                    iconColor: const Color(0xFFFFBB33),
+                                    label: 'Experience',
+                                    value: yearsOfExperience.trim().isNotEmpty && yearsOfExperience != '0'
+                                        ? '$yearsOfExperience yrs'
+                                        : 'Entry Level',
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 10),
+                              Row(
+                                children: [
+                                  _statCard(
+                                    icon: Icons.attach_money_rounded,
+                                    iconColor: const Color(0xFFCBFF47),
+                                    label: 'Hourly Rate',
+                                    value: hourlyRate.trim().isNotEmpty && hourlyRate != '0.0' && hourlyRate != '0'
+                                        ? '\$$hourlyRate/hr'
+                                        : 'To be decided',
+                                  ),
+                                  const SizedBox(width: 10),
+                                  _statCard(
+                                    icon: Icons.verified_user_rounded,
+                                    iconColor: const Color(0xFFA78BFA),
+                                    label: 'Applicant Role',
+                                    value: 'Trainer Applicant',
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 14),
+                              _buildPreviewField(
+                                'Bio / Philosophy',
+                                bio.trim().isNotEmpty ? bio : 'No biography or training philosophy provided yet.',
+                              ),
+                              const SizedBox(height: 14),
+                              _buildPreviewField(
+                                'Certifications',
+                                certifications.trim().isNotEmpty ? certifications : 'No professional certifications listed.',
+                              ),
+                              const SizedBox(height: 28),
+
+                              // ── Fitness Profile ────────────────────────
+                              _sectionLabel('FITNESS PROFILE'),
+                              const SizedBox(height: 12),
+                              _infoTile(
+                                icon: Icons.flag_rounded,
+                                iconColor: const Color(0xFFCBFF47),
+                                label: 'Fitness Goal',
+                                value: fitnessGoal,
+                              ),
+                              const SizedBox(height: 10),
+                              _infoTile(
+                                icon: Icons.bolt_rounded,
+                                iconColor: const Color(0xFFFFBB33),
+                                label: 'Activity Level',
+                                value: activityLvl,
+                              ),
+                              const SizedBox(height: 10),
+                              _infoTile(
+                                icon: Icons.fitness_center_rounded,
+                                iconColor: const Color(0xFF5CE8FF),
+                                label: 'Fitness Level',
+                                value: fitnessLvl,
+                              ),
+                              const SizedBox(height: 28),
+
+                              // ── Contact ────────────────────────────────
+                              _sectionLabel('CONTACT'),
+                              const SizedBox(height: 12),
+                              _infoTile(
+                                icon: Icons.email_rounded,
+                                iconColor: const Color(0xFFA78BFA),
+                                label: 'Email Address',
+                                value: email,
+                              ),
+                              const SizedBox(height: 32),
+
+                              // Close button
+                              GestureDetector(
+                                onTap: () => Navigator.pop(ctx),
+                                child: Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.symmetric(vertical: 15),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.05),
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(
+                                        color: Colors.white.withOpacity(0.1)),
+                                  ),
+                                  child: Text(
+                                    'Close',
+                                    textAlign: TextAlign.center,
+                                    style: GoogleFonts.dmSans(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.white70,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Helpers for the profile sheet ─────────────────────────────────────────
+
+  Widget _sectionLabel(String text) => Text(
+        text,
+        style: GoogleFonts.dmSans(
+          fontSize: 10,
+          fontWeight: FontWeight.w800,
+          color: kMuted,
+          letterSpacing: 1.2,
+        ),
+      );
+
+  Widget _statCard({
+    required IconData icon,
+    required Color iconColor,
+    required String label,
+    required String value,
+  }) =>
+      Expanded(
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.04),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withOpacity(0.08)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: iconColor.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, color: iconColor, size: 18),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: GoogleFonts.dmSans(
+                          fontSize: 10, color: kMuted),
+                    ),
+                    Text(
+                      value,
+                      style: GoogleFonts.dmSans(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+
+  Widget _infoTile({
+    required IconData icon,
+    required Color iconColor,
+    required String label,
+    required String value,
+  }) =>
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.04),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white.withOpacity(0.08)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: iconColor.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, color: iconColor, size: 18),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: GoogleFonts.dmSans(
+                        fontSize: 10, color: kMuted),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    value,
+                    style: GoogleFonts.dmSans(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+
+
+  Widget _buildStatChip(BuildContext context, String emoji, String value) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white.withOpacity(0.1)),
+        ),
+        child: Column(
+          children: [
+            Text(emoji, style: const TextStyle(fontSize: 16)),
+            const SizedBox(height: 4),
+            Text(
+              value,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.dmSans(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+
+  Widget _buildPreviewField(String label, String value) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label.toUpperCase(),
+          style: GoogleFonts.dmSans(
+            fontSize: 10,
+            fontWeight: FontWeight.bold,
+            color: kMuted,
+            letterSpacing: 0.5,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.03),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.white.withOpacity(0.06)),
+          ),
+          child: Text(
+            value,
+            style: GoogleFonts.dmSans(
+              fontSize: 12,
+              color: Colors.white.withOpacity(0.9),
+              height: 1.35,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

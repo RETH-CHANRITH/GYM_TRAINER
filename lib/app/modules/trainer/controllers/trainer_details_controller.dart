@@ -288,6 +288,32 @@ class TrainerDetailsNotifier extends StateNotifier<TrainerDetailsState> {
       ),
     );
 
+    // ── Listen to reviews collection to compute dynamic average rating ──
+    _subs.add(
+      _firestore
+          .collection('reviews')
+          .where('trainerId', isEqualTo: uid)
+          .snapshots()
+          .listen(
+            (snap) {
+              final vals = snap.docs
+                  .map((d) => (d.data()['rating'] as num?)?.toDouble() ?? 0.0)
+                  .where((v) => v > 0)
+                  .toList();
+              final avg = vals.isEmpty
+                  ? 0.0
+                  : vals.reduce((a, b) => a + b) / vals.length;
+              if (avg > 0 && mounted) {
+                state = state.copyWith(
+                  rating: avg,
+                  reviewCount: snap.docs.length,
+                );
+              }
+            },
+            onError: (_) {},
+          ),
+    );
+
     // ── Listen to THIS trainer's posts ONLY (by trainerId) ─────────────
     _subs.add(
       _firestore

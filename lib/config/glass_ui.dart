@@ -544,28 +544,6 @@ class PremiumAvatar extends StatelessWidget {
       );
     }
 
-    if (isTrainer) {
-      final fallbackUrl = getTrainerFallbackImageUrl(name);
-      return CachedNetworkImage(
-        imageUrl: fallbackUrl,
-        width: size,
-        height: size,
-        fit: BoxFit.cover,
-        placeholder: (context, url) => InitialsAvatar(
-          name: name,
-          size: size,
-          fontSize: fs,
-          borderRadius: br,
-        ),
-        errorWidget: (context, url, error) => InitialsAvatar(
-          name: name,
-          size: size,
-          fontSize: fs,
-          borderRadius: br,
-        ),
-      );
-    }
-
     return InitialsAvatar(
       name: name,
       size: size,

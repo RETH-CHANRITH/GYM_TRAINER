@@ -42,6 +42,7 @@ class AdminDashboardController extends ChangeNotifier {
     refundPendingCount.addListener(notifyListeners);
     gdprPendingCount.addListener(notifyListeners);
     monthlyRevenue.addListener(notifyListeners);
+    monthlyRevenueBookingsCount.addListener(notifyListeners);
     recentActivity.addListener(notifyListeners);
     searchUsersQuery.addListener(notifyListeners);
     filterUsersStatus.addListener(notifyListeners);
@@ -99,6 +100,7 @@ class AdminDashboardController extends ChangeNotifier {
   final refundPendingCount = 0.obs;
   final gdprPendingCount = 0.obs;
   final monthlyRevenue = 0.0.obs;
+  final monthlyRevenueBookingsCount = 0.obs;
 
   final recentActivity = <Map<String, String>>[].obs;
 
@@ -226,12 +228,22 @@ class AdminDashboardController extends ChangeNotifier {
           .limit(_dashboardCollectionLimit)
           .snapshots()
           .listen((snap) {
-            refunds.assignAll(
-              snap.docs.map((doc) {
-                final data = doc.data();
-                return {'id': doc.id, ...data};
-              }),
-            );
+            final uniqueRefunds = <String, Map<String, dynamic>>{};
+            for (final doc in snap.docs) {
+              final data = doc.data();
+              final id = doc.id;
+              final bId = data['bookingId']?.toString() ?? id;
+              if (!uniqueRefunds.containsKey(bId)) {
+                uniqueRefunds[bId] = {'id': id, ...data};
+              } else {
+                final existingStatus = uniqueRefunds[bId]!['status']?.toString().toLowerCase();
+                final newStatus = data['status']?.toString().toLowerCase();
+                if (existingStatus == 'pending' && newStatus != 'pending') {
+                  uniqueRefunds[bId] = {'id': id, ...data};
+                }
+              }
+            }
+            refunds.assignAll(uniqueRefunds.values.toList());
             _scheduleKpiRecompute();
             _checkAndCreateMissingRefunds();
           }, onError: (_) {}),
@@ -378,49 +390,40 @@ class AdminDashboardController extends ChangeNotifier {
     final now = DateTime.now();
     final startOfMonth = DateTime(now.year, now.month, 1);
     var revenue = 0.0;
+    var count = 0;
 
-    if (transactions.isNotEmpty) {
-      for (final tx in transactions) {
-        final status = (tx['status'] ?? '').toString().toLowerCase();
-        final type = (tx['type'] ?? '').toString().toLowerCase();
-        if (status.isNotEmpty &&
-            status != 'success' &&
-            status != 'completed' &&
-            status != 'paid') {
-          continue;
-        }
-        if (type != 'payment' && type != 'credit') continue;
+    for (final booking in bookings) {
+      final status = (booking['status'] ?? '').toString().toLowerCase();
+      if (status == 'cancelled' || status == 'rejected') continue;
 
-        final createdAt = _toDateTime(tx['createdAt']);
-        if (createdAt != null && createdAt.isBefore(startOfMonth)) continue;
+      final paymentStatus = (booking['paymentStatus'] ?? '').toString().toLowerCase();
+      final paid = booking['paid'] == true ||
+                   paymentStatus == 'completed' ||
+                   paymentStatus == 'fully_paid' ||
+                   paymentStatus == 'partially_paid';
+      if (paymentStatus == 'unpaid') continue;
+      if (paymentStatus.isEmpty && !paid && _toDouble(booking['amountPaid']) <= 0 && _toDouble(booking['paymentAmount']) <= 0) continue;
 
-        revenue += _toDouble(tx['amount']);
+      double amount = _toDouble(booking['amountPaid']);
+      if (amount <= 0) {
+        amount = _toDouble(booking['paymentAmount']);
       }
-    } else {
-      for (final booking in bookings) {
-        final status = (booking['status'] ?? '').toString().toLowerCase();
-        if (status == 'cancelled' || status == 'rejected') continue;
-
-        final paymentStatus = (booking['paymentStatus'] ?? '').toString().toLowerCase();
-        final paid = booking['paid'] == true;
-        if (paymentStatus == 'unpaid') continue;
-        if (paymentStatus.isEmpty && !paid && _toDouble(booking['amountPaid']) <= 0) continue;
-
-        double amount = _toDouble(booking['amountPaid']);
-        if (amount <= 0) {
-          if (paid || (paymentStatus.isEmpty && status == 'completed')) {
-            amount = _toDouble(booking['price'] ?? booking['amount']);
-          }
+      if (amount <= 0) {
+        if (paid || (paymentStatus.isEmpty && status == 'completed')) {
+          amount = _toDouble(booking['price'] ?? booking['amount']);
         }
-        if (amount <= 0) continue;
-
-        final createdAt = _toDateTime(booking['createdAt']);
-        if (createdAt != null && createdAt.isBefore(startOfMonth)) continue;
-
-        revenue += amount;
       }
+      if (amount <= 0) continue;
+
+      final createdAt = _toDateTime(booking['createdAt']);
+      if (createdAt != null && createdAt.isBefore(startOfMonth)) continue;
+
+      revenue += amount;
+      count++;
     }
+    
     monthlyRevenue.value = revenue;
+    monthlyRevenueBookingsCount.value = count;
   }
 
   void _recomputeRecentActivity() {
@@ -522,9 +525,13 @@ class AdminDashboardController extends ChangeNotifier {
     final paymentStatus = (booking['paymentStatus'] ?? '').toString().toLowerCase();
     final paid = booking['paid'] == true ||
                  paymentStatus == 'fully_paid' ||
-                 paymentStatus == 'partially_paid';
+                 paymentStatus == 'partially_paid' ||
+                 paymentStatus == 'completed';
 
     double amountPaid = (booking['amountPaid'] as num?)?.toDouble() ?? 0.0;
+    if (amountPaid == 0.0) {
+      amountPaid = (booking['paymentAmount'] as num?)?.toDouble() ?? 0.0;
+    }
     if (amountPaid == 0.0 && paid) {
       amountPaid = (booking['price'] as num?)?.toDouble() ?? 0.0;
     }
@@ -535,6 +542,17 @@ class AdminDashboardController extends ChangeNotifier {
 
     if (userId.isNotEmpty && amountPaid > 0 && paid) {
       try {
+        // Prevent duplicate creation by querying database directly
+        final existing = await _firestore
+            .collection('refunds')
+            .where('bookingId', isEqualTo: bookingId)
+            .limit(1)
+            .get();
+        if (existing.docs.isNotEmpty) {
+          _creatingRefundIds.add(bookingId); // Mark as already handled
+          return;
+        }
+
         await _firestore.collection('refunds').add({
           'bookingId': bookingId,
           'userId': userId,
@@ -991,9 +1009,13 @@ class AdminDashboardController extends ChangeNotifier {
         final paymentStatus = (booking['paymentStatus'] ?? '').toString().toLowerCase();
         final paid = booking['paid'] == true ||
                      paymentStatus == 'fully_paid' ||
-                     paymentStatus == 'partially_paid';
+                     paymentStatus == 'partially_paid' ||
+                     paymentStatus == 'completed';
 
         double amountPaid = (booking['amountPaid'] as num?)?.toDouble() ?? 0.0;
+        if (amountPaid == 0.0) {
+          amountPaid = (booking['paymentAmount'] as num?)?.toDouble() ?? 0.0;
+        }
         if (amountPaid == 0.0 && paid) {
           amountPaid = (booking['price'] as num?)?.toDouble() ?? 0.0;
         }
@@ -1275,11 +1297,38 @@ class AdminDashboardController extends ChangeNotifier {
 
     isActionLoading.value = true;
     try {
+      // Find payout to get trainerId and amount for notification
+      final payoutList = payouts.where((p) => p['id'] == payoutId).toList();
+      final trainerId = payoutList.isNotEmpty
+          ? payoutList.first['trainerId']?.toString() ?? ''
+          : '';
+      final amount = payoutList.isNotEmpty
+          ? (payoutList.first['amount'] as num?)?.toDouble() ?? 0.0
+          : 0.0;
+
       await _firestore.collection('payouts').doc(payoutId).set({
         'status': 'paid',
         'paidAt': FieldValue.serverTimestamp(),
         'markedPaidBy': FirebaseAuth.instance.currentUser?.uid,
       }, SetOptions(merge: true));
+
+      // Notify trainer their payout has been paid out
+      if (trainerId.isNotEmpty) {
+        await _firestore
+            .collection('notifications')
+            .doc(trainerId)
+            .collection('items')
+            .add({
+          'title': 'Payout Sent! 💸',
+          'body': '\$${amount.toStringAsFixed(2)} has been sent to your bank account.',
+          'type': 'payout',
+          'color': 'sky',
+          'icon': 'payment',
+          'read': false,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      }
+
       showSnackbar('Marked paid', 'Payout marked as paid.');
     } catch (_) {
       showSnackbar('Error', 'Unable to mark payout as paid.');
@@ -1307,12 +1356,33 @@ class AdminDashboardController extends ChangeNotifier {
     try {
       final payoutList = payouts.where((p) => p['id'] == payoutId).toList();
       if (payoutList.isEmpty) return;
+      final payout = payoutList.first;
+      final trainerId = payout['trainerId']?.toString() ?? '';
+      final amount = (payout['amount'] as num?)?.toDouble() ?? 0.0;
 
       await _firestore.collection('payouts').doc(payoutId).set({
         'status': 'approved',
         'approvedAt': FieldValue.serverTimestamp(),
         'approvedBy': FirebaseAuth.instance.currentUser?.uid,
       }, SetOptions(merge: true));
+
+      // Notify trainer their payout was approved
+      if (trainerId.isNotEmpty) {
+        await _firestore
+            .collection('notifications')
+            .doc(trainerId)
+            .collection('items')
+            .add({
+          'title': 'Payout Approved',
+          'body': 'Your payout request of \$${amount.toStringAsFixed(2)} has been approved and will be processed soon.',
+          'type': 'payout',
+          'color': 'gold',
+          'icon': 'payment',
+          'read': false,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      }
+
       showSnackbar('Approved', 'Payout approved successfully.');
     } catch (_) {
       showSnackbar('Error', 'Unable to approve payout.');
